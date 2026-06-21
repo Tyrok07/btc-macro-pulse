@@ -5,8 +5,8 @@ import plotly.graph_objects as go
 import requests
 import json
 
-st.set_page_config(page_title="Süper Kompozit Döngü Öncüsü", layout="wide")
-st.title("📊 Süper Kompozit Rasyo ve Bitcoin Al-Sat Simülatörü")
+st.set_page_config(page_title="8 Yıllık Süper Kompozit Döngü Öncüsü", layout="wide")
+st.title("📊 8 Yıllık Süper Kompozit Rasyo ve Tarihsel Al-Sat Simülatörü")
 
 TOKEN = str(st.secrets.get("TELEGRAM_TOKEN", "")).strip()
 CHAT_ID = str(st.secrets.get("TELEGRAM_CHAT_ID", "")).strip()
@@ -22,10 +22,12 @@ def telegram_mesaj_gonder(mesaj):
     except:
         return False
 
+# 1. Veri Çekme Süresi 2 Yıldan 8 Yıla Çıkarıldı (2018-2026 Arası)
 @st.cache_data(ttl=3600)
 def verileri_getir():
     semboller = {"GC=F": "Altın", "HG=F": "Bakır", "BTC-USD": "Bitcoin"}
-    df = yf.download(list(semboller.keys()), period="2y", interval="1d")
+    # period="2y" değeri "8y" yapılarak tüm tarihi geçmiş havuzumuza eklendi
+    df = yf.download(list(semboller.keys()), period="8y", interval="1d")
     if 'Close' in df.columns:
         df = df['Close']
     df.rename(columns=semboller, inplace=True)
@@ -38,31 +40,30 @@ try:
     if data.empty or len(data) < 50:
         st.error("Veri havuzu henüz yeterli büyüklükte değil.")
     else:
-        # 🚀 YENİ SÜPER KOMPOZİT FORMÜL HESAPLAMASI
-        # Altın / (Bakır / Bitcoin) 
+        # Süper Kompozit Hesaplama
         data['Rasyo'] = data['Altın'] / (data['Bakır'] / data['Bitcoin'])
         
-        # Büyük dalgaları yakalamak için SMA 50 yapıldı (Gürültüler temizlendi)
+        # 8 Yıllık büyük trendleri hatasız yakalamak için SMA 50 korundu
         data['SMA50'] = data['Rasyo'].rolling(window=50).mean()
         data = data.dropna().copy()
         
-        # 💰 10.000 DOLARLIK GEÇMİŞE DÖNÜK AL-SAT SİMÜLASYONU
+        # 💰 8 YILLIK TARİHSEL 10.000 DOLAR SİMÜLASYONU
         bakiye_usd = 10000.0
         btc_adet = 0.0
-        pozisyonda_mi = False  # True = BTC'deyiz, False = Nakit Dolar'dayız
+        pozisyonda_mi = False
         
         for i in range(len(data)):
             anlik_rasyo = data['Rasyo'].iloc[i]
             anlik_sma = data['SMA50'].iloc[i]
             anlik_btc_fiyat = data['Bitcoin'].iloc[i]
             
-            # SİNYAL DEĞİŞTİ: Süper rasyo ortalamanın ALTINA indiğinde = Kripto Boğası başlar -> BTC AL
+            # SİNYAL: Risk-On -> BTC AL
             if anlik_rasyo < anlik_sma and not pozisyonda_mi:
                 btc_adet = bakiye_usd / anlik_btc_fiyat
                 bakiye_usd = 0.0
                 pozisyonda_mi = True
                 
-            # SİNYAL DEĞİŞTİ: Süper rasyo ortalamanın ÜSTÜNE çıktığında = Kriz/Savunma başlar -> BTC SAT
+            # SİNYAL: Risk-Off -> BTC SAT, NAKDE GEÇ
             elif anlik_rasyo >= anlik_sma and pozisyonda_mi:
                 bakiye_usd = btc_adet * anlik_btc_fiyat
                 btc_adet = 0.0
@@ -71,7 +72,6 @@ try:
         toplam_portfoy_degeri = bakiye_usd if not pozisyonda_mi else (btc_adet * data['Bitcoin'].iloc[-1])
         kazanc_yuzdesi = ((toplam_portfoy_degeri - 10000.0) / 10000.0) * 100
         
-        # Son Değerler
         son_rasyo = data['Rasyo'].iloc[-1]
         son_sma = data['SMA50'].iloc[-1]
         btc_fiyat = data['Bitcoin'].iloc[-1]
@@ -90,30 +90,30 @@ try:
             col3.error(status_text)
             
         col4.metric(
-            label="Süper Strateji Bakiyesi (Başlangıç: $10K)", 
+            label="8 Yıllık Strateji Bakiyesi (Giriş: $10K)", 
             value=f"${toplam_portfoy_degeri:,.2f}", 
-            delta=f"%{kazanc_yuzdesi:+.2f} Kazanç"
+            delta=f"%{kazanc_yuzdesi:+.2f} Tarihsel Kazanç"
         )
             
         if st.button("📢 Güncel Durumu Telegram'a Raporla"):
             rapor_mesaji = (
-                f"⚡ *SÜPER KOMPOZİT RAPOR* ⚡\n\n"
+                f"⚡ *8 YILLIK TARİHSEL RAPOR* ⚡\n\n"
                 f"🪙 *BTC Fiyatı:* ${btc_fiyat:,.2f}\n"
                 f"📊 *Süper Rasyo:* {son_rasyo:,.1f}\n"
                 f"📈 *Sinyal Hattı (SMA50):* {son_sma:,.1f}\n\n"
                 f"🚨 *Piyasa Durumu:* {status_text}\n"
-                f"💰 *10K Strateji Portföyü:* ${toplam_portfoy_degeri:,.2f} (%{kazanc_yuzdesi:+.2f})"
+                f"💰 *8 Yıllık Portföy Gücü:* ${toplam_portfoy_degeri:,.2f} (%{kazanc_yuzdesi:+.2f})"
             )
             telegram_mesaj_gonder(rapor_mesaji)
 
-        st.subheader("🔄 Tek Grafikte Süper Kompozit Rasyo (Sarı/Yeşil/Kırmızı Sinyal Gösterimi)")
+        st.subheader("🔄 8 Yıllık Tarihsel Süper Kompozit Grafik (2018 - 2026)")
         
         fig = go.Figure()
 
         # 1. Çizgi: Süper Rasyo Hattı (Siyah)
-        fig.add_trace(go.Scatter(x=data.index, y=data['Rasyo'], name="Süper Rasyo", line=dict(color='black', width=2)))
+        fig.add_trace(go.Scatter(x=data.index, y=data['Rasyo'], name="Süper Rasyo", line=dict(color='black', width=1.5)))
 
-        # 📊 RENK DEĞİŞTİREN SMA50 ÇİZGİSİ (Risk-On ise Yeşil, Risk-Off ise Kırmızı)
+        # 📊 RENK DEĞİŞTİREN SMA50 ÇİZGİSİ
         data['Renk'] = data.apply(lambda row: 'green' if row['Rasyo'] < row['SMA50'] else 'red', axis=1)
         
         for _, grup in data.groupby((data['Renk'] != data['Renk'].shift()).cumsum()):
@@ -121,14 +121,14 @@ try:
                 x=grup.index,
                 y=grup['SMA50'],
                 mode='lines',
-                line=dict(color=grup['Renk'].iloc[0], width=3),
+                line=dict(color=grup['Renk'].iloc, width=3),
                 showlegend=False
             ))
 
         fig.update_layout(
             height=600,
             template="plotly_white",
-            xaxis=dict(title="Tarih", linewidth=1, linecolor="gray"),
+            xaxis=dict(title="Tarih (8 Yıllık Geniş Perspektif)", linewidth=1, linecolor="gray"),
             yaxis=dict(title="Süper Rasyo Değeri", title_font=dict(color="black"), tickfont=dict(color="black"))
         )
         
@@ -136,12 +136,12 @@ try:
 
         # YAPAY ZEKA AJANI
         st.markdown("---")
-        st.subheader("🤖 Süper Kompozit Yapay Zeka Danışmanı")
-        user_question = st.text_input("Yapay Zeka Ajanına bu yeni süper endeks hakkında bir soru sorun:")
+        st.subheader("🤖 Tarihsel Döngü Uzmanı Yapay Zeka Danışmanı")
+        user_question = st.text_input("Yapay Zeka Ajanına 8 yıllık bu devasa geçmiş ve strateji hakkında bir soru sorun:")
         if user_question:
-            with st.spinner("Analiz ediliyor..."):
+            with st.spinner("8 yıllık veri analiz ediliyor..."):
                 try:
-                    system_context = f"Sen dünyanın en iyi hedge fonu yöneticisisin. Kullanıcının yeni formülü 'Altın / (Bakır / Bitcoin)' rasyosunu analiz ediyorsun. 10.000 dolar bu kuralla işletildi ve şu an ${toplam_portfoy_degeri:,.2f} oldu. Mevcut rejim {status_text}. Bu muazzam karlılığı ve renk değiştiren SMA50 çizgilerini Türkçe yorumla."
+                    system_context = f"Sen makroekonomi profesörüsün. Kullanıcı 2018-2026 arasındaki 8 yıllık büyük döngüyü açtı. 10.000 dolar bu 8 yıllık sürede işletildi ve şu an ${toplam_portfoy_degeri:,.2f} oldu. Mevcut rejim {status_text}. Bu 8 yıllık muazzam performansı, 2020 boğasını ve bugünkü durumu kapsayarak Türkçe yorumla."
                     response = requests.post("https://openrouter.ai", 
                         headers={"Authorization": "Bearer free", "Content-Type": "application/json"},
                         data=json.dumps({
@@ -152,7 +152,7 @@ try:
                     if response.status_code == 200:
                         st.markdown(f"**🤖 AI Danışmanının Analizi:**\n\n{response.json()['choices']['message']['content']}")
                 except:
-                    st.warning("Yapay zeka motoru verileri inceliyor.")
+                    st.warning("Yapay zeka motoru 8 yıllık verileri tarıyor.")
 
 except Exception as e:
     st.error(f"Veri hesaplanırken genel hata oluştu: {e}")
