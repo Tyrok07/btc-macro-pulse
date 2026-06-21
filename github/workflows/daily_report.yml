@@ -1,10 +1,9 @@
-name: Günlük Makro Rapor Otomasyonu
+name: Gunluk Makro Rapor Otomasyonu
 
 on:
   schedule:
-    # Her gün UTC saatiyle 06:00'da (Türkiye saatiyle 09:00'da) otomatik çalışır
     - cron: "0 6 * * *"
-  workflow_dispatch: # İstediğiniz an GitHub üzerinden elle çalıştırma butonu açar
+  workflow_dispatch:
 
 jobs:
   report:
@@ -19,10 +18,9 @@ jobs:
           python-version: "3.11"
 
       - name: Bağımlılıkları Yükle
-        run: |
-          pip install yfinance pandas requests
+        run: pip install yfinance pandas requests
 
-      - name: Raporu Çalıştır ve Telegram'a Gönder
+      - name: Raporu Calistir ve Telegrama Gonder
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
