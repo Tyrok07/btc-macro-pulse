@@ -73,12 +73,12 @@ try:
             )
             telegram_mesaj_gonder(rapor_mesaji)
 
-        # 🚀 TEK GRAFİKTE ÇİFT EKSENLİ BİRLEŞTİRME (Uyumlu ve Kararlı Sürüm)
+        # 🚀 TEK GRAFİKTE ÇİFT EKSENLİ BİRLEŞTİRME (Hatasız Güncel Sürüm)
         st.subheader("🔄 Tek Grafikte Zıt Korelasyon (Sol Eksen: BTC / Sağ Eksen: Metal Rasyosu)")
         
         fig = go.Figure()
 
-        # 1. Çizgi: Bitcoin (Sol Y Ekseni - y1)
+        # 1. Çizgi: Bitcoin (Sol Y Ekseni)
         fig.add_trace(go.Scatter(
             x=data.index, 
             y=data['Bitcoin'], 
@@ -86,7 +86,7 @@ try:
             line=dict(color='orange', width=3)
         ))
 
-        # 2. Çizgi: Metal Rasyosu (Sağ Y Ekseni - y2)
+        # 2. Çizgi: Metal Rasyosu (Sağ Y Ekseni)
         fig.add_trace(go.Scatter(
             x=data.index, 
             y=data['Rasyo'], 
@@ -95,7 +95,7 @@ try:
             yaxis="y2"
         ))
 
-        # 3. Çizgi: SMA20 (Sağ Y Ekseni - y2)
+        # 3. Çizgi: SMA20 (Sağ Y Ekseni)
         fig.add_trace(go.Scatter(
             x=data.index, 
             y=data['SMA20'], 
@@ -104,24 +104,22 @@ try:
             yaxis="y2"
         ))
 
-        # Parametre çatışmalarını önleyen tam uyumlu eksen yerleşimi
+        # Hataya neden olan 'titlefont' parametreleri güncel 'title_font' ile değiştirildi
         fig.update_layout(
             height=600,
             template="plotly_white",
             xaxis=dict(title="Tarih", linewidth=1, linecolor="gray"),
             yaxis=dict(
-                title="Bitcoin Fiyatı ($)", 
-                titlefont=dict(color="orange"), 
+                title=dict(text="Bitcoin Fiyatı ($)", font=dict(color="orange")), 
                 tickfont=dict(color="orange"),
                 side="left"
             ),
             yaxis2=dict(
-                title="Metal Rasyosu Değeri", 
-                titlefont=dict(color="black"), 
+                title=dict(text="Metal Rasyosu Değeri", font=dict(color="black")), 
                 tickfont=dict(color="black"), 
                 overlaying="y", 
                 side="right",
-                anchor="x" # Eksen çakışmasını kilitleyen parametre
+                anchor="x"
             ),
             legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.5)")
         )
@@ -131,7 +129,7 @@ try:
         # YAPAY ZEKA AJANI BÖLÜMÜ
         st.markdown("---")
         st.subheader("🤖 Makro Pusula Yapay Zeka Danışmanı")
-        user_question = st.text_input("Yapay Zeka Ajanına tek grafikteki bu birleşik görünüm hakkında bir soru sorun:")
+        user_question = st.text_input("Yapay Zeka Ajanına bir soru sorun:")
         if user_question:
             with st.spinner("Analiz ediliyor..."):
                 try:
