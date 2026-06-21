@@ -43,9 +43,16 @@ try:
         # Süper Kompozit Hesaplama
         data['Rasyo'] = data['Altın'] / (data['Bakır'] / data['Bitcoin'])
 
-        # 8 Yıllık büyük trendleri hatasız yakalamak için SMA 50 korundu
-        data['SMA50'] = data['Rasyo'].rolling(window=50).mean()
+        # SMA penceresi 50'den 20 güne çekildi (daha hızlı tepki, daha fazla whipsaw riski)
+        SMA_PENCERE = 20
+        data['SMA50'] = data['Rasyo'].rolling(window=SMA_PENCERE).mean()
         data = data.dropna().copy()
+
+        # 📈 BTC AL-TUT (BUY & HOLD) KIYASLAMASI
+        # Aynı 10.000$ ile başlangıçta BTC alınıp hiç dokunulmasaydı ne olurdu?
+        ilk_btc_fiyat = data['Bitcoin'].iloc[0]
+        bh_btc_adet = 10000.0 / ilk_btc_fiyat
+        data['BuyHold_Deger'] = bh_btc_adet * data['Bitcoin']
 
         # 💰 8 YILLIK TARİHSEL 10.000 DOLAR SİMÜLASYONU
         bakiye_usd = 10000.0
@@ -72,15 +79,18 @@ try:
         toplam_portfoy_degeri = bakiye_usd if not pozisyonda_mi else (btc_adet * data['Bitcoin'].iloc[-1])
         kazanc_yuzdesi = ((toplam_portfoy_degeri - 10000.0) / 10000.0) * 100
 
+        bh_son_deger = data['BuyHold_Deger'].iloc[-1]
+        bh_kazanc_yuzdesi = ((bh_son_deger - 10000.0) / 10000.0) * 100
+
         son_rasyo = data['Rasyo'].iloc[-1]
         son_sma = data['SMA50'].iloc[-1]
         btc_fiyat = data['Bitcoin'].iloc[-1]
         is_risk_on = son_rasyo < son_sma
 
         # Kartlar
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Bitcoin Fiyatı", f"${btc_fiyat:,.2f}")
-        col2.metric("Süper Rasyo / SMA50", f"{son_rasyo:,.1f} / {son_sma:,.1f}")
+        col2.metric("Süper Rasyo / SMA20", f"{son_rasyo:,.1f} / {son_sma:,.1f}")
 
         if is_risk_on:
             status_text = "🟢 REJİM: RISK-ON (Kripto Baharı)"
@@ -94,6 +104,18 @@ try:
             value=f"${toplam_portfoy_degeri:,.2f}",
             delta=f"%{kazanc_yuzdesi:+.2f} Tarihsel Kazanç"
         )
+
+        col5.metric(
+            label="BTC Al-Tut Bakiyesi (Giriş: $10K)",
+            value=f"${bh_son_deger:,.2f}",
+            delta=f"%{bh_kazanc_yuzdesi:+.2f} Al-Tut Kazancı"
+        )
+
+        fark = toplam_portfoy_degeri - bh_son_deger
+        if fark < 0:
+            st.warning(f"⚠️ Strateji, sadece BTC tutmaya kıyasla **${abs(fark):,.2f}** daha az getiri sağladı (Strateji: %{kazanc_yuzdesi:+.2f} vs Al-Tut: %{bh_kazanc_yuzdesi:+.2f}).")
+        else:
+            st.success(f"✅ Strateji, sadece BTC tutmaya kıyasla **${fark:,.2f}** daha fazla getiri sağladı (Strateji: %{kazanc_yuzdesi:+.2f} vs Al-Tut: %{bh_kazanc_yuzdesi:+.2f}).")
 
         if st.button("📢 Güncel Durumu Telegram'a Raporla"):
             rapor_mesaji = (
@@ -113,7 +135,7 @@ try:
         # 1. Çizgi: Süper Rasyo Hattı (Siyah)
         fig.add_trace(go.Scatter(x=data.index, y=data['Rasyo'], name="Süper Rasyo", line=dict(color='black', width=1.5)))
 
-        # 📊 RENK DEĞİŞTİREN SMA50 ÇİZGİSİ
+        # 📊 RENK DEĞİŞTİREN SMA20 ÇİZGİSİ
         data['Renk'] = data.apply(lambda row: 'green' if row['Rasyo'] < row['SMA50'] else 'red', axis=1)
 
         for _, grup in data.groupby((data['Renk'] != data['Renk'].shift()).cumsum()):
@@ -125,14 +147,70 @@ try:
                 showlegend=False
             ))
 
+        # 🪙 BTC FİYAT ÇİZGİSİ (ikinci y-ekseninde, turuncu, kesikli)
+        fig.add_trace(go.Scatter(
+            x=data.index,
+            y=data['Bitcoin'],
+            name="BTC Fiyatı (USD)",
+            line=dict(color='orange', width=1.5, dash='dot'),
+            yaxis="y2"
+        ))
+
         fig.update_layout(
             height=600,
             template="plotly_white",
             xaxis=dict(title="Tarih (8 Yıllık Geniş Perspektif)", linewidth=1, linecolor="gray"),
-            yaxis=dict(title="Süper Rasyo Değeri", title_font=dict(color="black"), tickfont=dict(color="black"))
+            yaxis=dict(title="Süper Rasyo Değeri", title_font=dict(color="black"), tickfont=dict(color="black")),
+            yaxis2=dict(
+                title="BTC Fiyatı (USD)",
+                title_font=dict(color="orange"),
+                tickfont=dict(color="orange"),
+                overlaying="y",
+                side="right"
+            ),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # 📈 STRATEJİ vs AL-TUT PORTFÖY DEĞERİ KARŞILAŞTIRMA GRAFİĞİ
+        st.subheader("⚖️ Strateji Bakiyesi vs BTC Al-Tut Bakiyesi (Giriş: $10.000)")
+
+        # Portföy değerini gün gün yeniden hesapla (görselleştirme için)
+        gunluk_strateji_degeri = []
+        bakiye_sim = 10000.0
+        btc_adet_sim = 0.0
+        pozisyon_sim = False
+        for i in range(len(data)):
+            rasyo_i = data['Rasyo'].iloc[i]
+            sma_i = data['SMA50'].iloc[i]
+            fiyat_i = data['Bitcoin'].iloc[i]
+
+            if rasyo_i < sma_i and not pozisyon_sim:
+                btc_adet_sim = bakiye_sim / fiyat_i
+                bakiye_sim = 0.0
+                pozisyon_sim = True
+            elif rasyo_i >= sma_i and pozisyon_sim:
+                bakiye_sim = btc_adet_sim * fiyat_i
+                btc_adet_sim = 0.0
+                pozisyon_sim = False
+
+            gunluk_deger = bakiye_sim if not pozisyon_sim else (btc_adet_sim * fiyat_i)
+            gunluk_strateji_degeri.append(gunluk_deger)
+
+        data['Strateji_Deger'] = gunluk_strateji_degeri
+
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(x=data.index, y=data['Strateji_Deger'], name="Strateji Bakiyesi", line=dict(color='blue', width=2)))
+        fig2.add_trace(go.Scatter(x=data.index, y=data['BuyHold_Deger'], name="BTC Al-Tut Bakiyesi", line=dict(color='orange', width=2)))
+        fig2.update_layout(
+            height=450,
+            template="plotly_white",
+            xaxis=dict(title="Tarih"),
+            yaxis=dict(title="Portföy Değeri (USD)"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig2, use_container_width=True)
 
         # YAPAY ZEKA AJANI
         st.markdown("---")
