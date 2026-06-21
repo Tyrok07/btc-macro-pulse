@@ -8,7 +8,7 @@ import json
 st.set_page_config(page_title="Makro Döngü Öncüsü & AI", layout="wide")
 st.title("📊 Küresel Risk İştahı ve Bitcoin Döngü Pusulası")
 
-# Secrets üzerinden Telegram verilerini çekme
+# Secrets üzerinden Telegram verilerini güvenli çekme
 TOKEN = str(st.secrets.get("TELEGRAM_TOKEN", "")).strip()
 CHAT_ID = str(st.secrets.get("TELEGRAM_CHAT_ID", "")).strip()
 
@@ -23,7 +23,7 @@ def telegram_mesaj_gonder(mesaj):
     except:
         return False
 
-# Canlı Veri Çekme
+# Canlı Veri Çekme (Hafta sonu korumalı)
 @st.cache_data(ttl=3600)
 def verileri_getir():
     semboller = {"GC=F": "Altın", "SI=F": "Gümüş", "HG=F": "Bakır", "BTC-USD": "Bitcoin"}
@@ -40,6 +40,7 @@ try:
     if data.empty or len(data) < 20:
         st.error("Veri havuzu henüz yeterli büyüklükte değil.")
     else:
+        # Rasyo ve Hareketli Ortalama Hesaplama
         data['Rasyo'] = data['Altın'] / (data['Gümüş'] + data['Bakır'])
         data['SMA20'] = data['Rasyo'].rolling(window=20).mean()
         data = data.dropna()
@@ -72,12 +73,12 @@ try:
             )
             telegram_mesaj_gonder(rapor_mesaji)
 
-        # 🚀 TEK GRAFİKTE ÇİFT EKSENLİ BİRLEŞTİRME (Dual Axis)
+        # 🚀 TEK GRAFİKTE ÇİFT EKSENLİ BİRLEŞTİRME (Uyumlu ve Kararlı Sürüm)
         st.subheader("🔄 Tek Grafikte Zıt Korelasyon (Sol Eksen: BTC / Sağ Eksen: Metal Rasyosu)")
         
         fig = go.Figure()
 
-        # 1. Çizgi: Bitcoin (Sol Y Ekseni)
+        # 1. Çizgi: Bitcoin (Sol Y Ekseni - y1)
         fig.add_trace(go.Scatter(
             x=data.index, 
             y=data['Bitcoin'], 
@@ -85,43 +86,56 @@ try:
             line=dict(color='orange', width=3)
         ))
 
-        # 2. Çizgi: Metal Rasyosu (Sağ Y Ekseni)
+        # 2. Çizgi: Metal Rasyosu (Sağ Y Ekseni - y2)
         fig.add_trace(go.Scatter(
             x=data.index, 
             y=data['Rasyo'], 
             name="3'lü Metal Rasyosu (Sağ Eksen)", 
             line=dict(color='black', width=1.5),
-            yaxis="y2" # Sağ eksene bağlıyoruz
+            yaxis="y2"
         ))
 
-        # 3. Çizgi: SMA20 (Sağ Y Ekseni)
+        # 3. Çizgi: SMA20 (Sağ Y Ekseni - y2)
         fig.add_trace(go.Scatter(
             x=data.index, 
             y=data['SMA20'], 
             name="SMA 20 Sinyal (Sağ Eksen)", 
             line=dict(color='red', width=1, dash='dash'),
-            yaxis="y2" # Sağ eksene bağlıyoruz
+            yaxis="y2"
         ))
 
-        # Çift eksen tanımlama ayarları
+        # Parametre çatışmalarını önleyen tam uyumlu eksen yerleşimi
         fig.update_layout(
             height=600,
             template="plotly_white",
-            xaxis=dict(title="Tarih"),
-            yaxis=dict(title="Bitcoin Fiyatı ($)", titlefont=dict(color="orange"), tickfont=dict(color="orange")),
-            yaxis2=dict(title="Metal Rasyosu Değeri", titlefont=dict(color="black"), tickfont=dict(color="black"), overlaying="y", side="right")
+            xaxis=dict(title="Tarih", linewidth=1, linecolor="gray"),
+            yaxis=dict(
+                title="Bitcoin Fiyatı ($)", 
+                titlefont=dict(color="orange"), 
+                tickfont=dict(color="orange"),
+                side="left"
+            ),
+            yaxis2=dict(
+                title="Metal Rasyosu Değeri", 
+                titlefont=dict(color="black"), 
+                tickfont=dict(color="black"), 
+                overlaying="y", 
+                side="right",
+                anchor="x" # Eksen çakışmasını kilitleyen parametre
+            ),
+            legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.5)")
         )
         
         st.plotly_chart(fig, use_container_width=True)
 
-        # YAPAY ZEKA AJANI
+        # YAPAY ZEKA AJANI BÖLÜMÜ
         st.markdown("---")
         st.subheader("🤖 Makro Pusula Yapay Zeka Danışmanı")
-        user_question = st.text_input("Yapay Zeka Ajanına bir soru sorun:")
+        user_question = st.text_input("Yapay Zeka Ajanına tek grafikteki bu birleşik görünüm hakkında bir soru sorun:")
         if user_question:
             with st.spinner("Analiz ediliyor..."):
                 try:
-                    system_context = f"Sen makro uzmanısın. Güncel durum: BTC ${btc_fiyat:,.2f}, Rasyo {son_rasyo:.3f}, Rejim {status_text}. Çift eksenli tek grafikteki zıt korelasyonu temel alarak Türkçe yanıt ver."
+                    system_context = f"Sen makro uzmanısın. Güncel durum: BTC ${btc_fiyat:,.2f}, Rasyo {son_rasyo:.3f}, Rejim {status_text}. Tek grafikteki çift eksenli zıt korelasyonu temel alarak rasyonel ve Türkçe yanıt ver."
                     response = requests.post("https://openrouter.ai", 
                         headers={"Authorization": "Bearer free", "Content-Type": "application/json"},
                         data=json.dumps({
@@ -132,7 +146,7 @@ try:
                     if response.status_code == 200:
                         st.markdown(f"**🤖 AI Danışmanının Analizi:**\n\n{response.json()['choices']['message']['content']}")
                 except:
-                    st.warning("Yapay zeka motoru dinleniyor.")
+                    st.warning("Yapay zeka motoru piyasa verilerini inceliyor.")
 
 except Exception as e:
     st.error(f"Veri hesaplanırken genel hata oluştu: {e}")
