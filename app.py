@@ -8,7 +8,7 @@ st.set_page_config(page_title="Makro Döngü Öncüsü", layout="wide")
 st.title("📊 Küresel Risk İştahı ve Bitcoin Döngü Pusulası")
 
 # Sizin verdiğiniz Telegram bilgileri koda kalıcı olarak eklendi
-TOKEN = "8532843479:AAGUxGtxaJ171qwDZjaQvoTr7dmEmhAA6Bc"
+TOKEN = "8945445385:AAH2rM1UsRT2bntJM8ToeJz6BTD6nJXRvQA"
 CHAT_ID = "445160297"
 
 def telegram_mesaj_gonder(mesaj):
