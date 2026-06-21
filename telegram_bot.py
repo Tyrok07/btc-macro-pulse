@@ -27,7 +27,7 @@ def rapor_gonder():
         if son_rasyo < son_sma:
             status_text = "🟢 RISK-ON (Kripto Baharı)"
         else:
-            status_text = "🔴 RISK-OFF (Koruma Dönemi)"
+            status_text = "🔴 REJİM: RISK-OFF (Koruma Dönemi)"
             
         mesaj = (
             f"📊 *Günlük Makro Döngü Raporu*\n\n"
@@ -38,10 +38,16 @@ def rapor_gonder():
             f"📢 _GitHub üzerinden otomatik üretilmiştir._"
         )
         
-        url = f"https://telegram.org{TOKEN}/sendMessage"
+        # URL parsing hatasına neden olan kısım "api.telegram.org" olarak düzeltildi
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
         payload = {"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"}
-        requests.post(url, json=payload, timeout=10)
-        print("Rapor başarıyla gönderildi!")
+        response = requests.post(url, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            print("Rapor başarıyla gönderildi!")
+        else:
+            print(f"Telegram API Hatası: {response.text}")
+            
     except Exception as e:
         print(f"Hata: {e}")
 
