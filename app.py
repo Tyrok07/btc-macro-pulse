@@ -5,8 +5,133 @@ import plotly.graph_objects as go
 import requests
 import json
 
-st.set_page_config(page_title="8 Yıllık Süper Kompozit Döngü Öncüsü", layout="wide")
-st.title("📊 8 Yıllık Süper Kompozit Rasyo ve Tarihsel Al-Sat Simülatörü")
+st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_icon="◆")
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+.stApp {
+    background: #0B0E14;
+    color: #E6E9EF;
+}
+
+/* Üst başlık alanı */
+.lk-header {
+    padding: 28px 4px 20px 4px;
+    border-bottom: 1px solid #1E2430;
+    margin-bottom: 24px;
+}
+.lk-eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #6FE3B5;
+    margin-bottom: 6px;
+}
+.lk-title {
+    font-size: 30px;
+    font-weight: 700;
+    color: #F2F4F8;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+.lk-subtitle {
+    font-size: 14px;
+    color: #7C8595;
+    margin-top: 6px;
+}
+
+/* Metrik kartları */
+div[data-testid="stMetric"] {
+    background: #131722;
+    border: 1px solid #1E2430;
+    border-radius: 10px;
+    padding: 16px 18px;
+}
+div[data-testid="stMetric"] label {
+    color: #7C8595 !important;
+    font-size: 12px !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+div[data-testid="stMetricValue"] {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px !important;
+    color: #F2F4F8 !important;
+}
+
+/* Rejim durum kutusu */
+.lk-regime {
+    border-radius: 10px;
+    padding: 16px 18px;
+    border: 1px solid;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+.lk-regime-on {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.35);
+    color: #4ADE80;
+}
+.lk-regime-off {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #F87171;
+}
+
+/* Bölüm başlıkları */
+.lk-section {
+    font-size: 16px;
+    font-weight: 600;
+    color: #F2F4F8;
+    margin: 32px 0 12px 0;
+    padding-left: 10px;
+    border-left: 3px solid #6FE3B5;
+}
+
+/* Streamlit varsayılan başlıklarını sustur */
+h1, h2, h3 { color: #F2F4F8; }
+hr { border-color: #1E2430; }
+
+.stButton > button {
+    background: #131722;
+    border: 1px solid #2A3140;
+    color: #E6E9EF;
+    border-radius: 8px;
+    font-weight: 500;
+}
+.stButton > button:hover {
+    border-color: #6FE3B5;
+    color: #6FE3B5;
+}
+
+.stTextInput input {
+    background: #131722;
+    border: 1px solid #1E2430;
+    color: #E6E9EF;
+    border-radius: 8px;
+}
+
+.stAlert {
+    border-radius: 10px;
+    font-family: 'Inter', sans-serif;
+}
+</style>
+
+<div class="lk-header">
+    <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD &nbsp;·&nbsp; Likidite Kompoziti</div>
+    <p class="lk-title">Süper Kompozit Likidite Paneli</p>
+    <p class="lk-subtitle">8 yıllık altın–bakır–bitcoin oranı, SMA20 sinyali ve tarihsel al-sat performansı</p>
+</div>
+""", unsafe_allow_html=True)
 
 TOKEN = str(st.secrets.get("TELEGRAM_TOKEN", "")).strip()
 CHAT_ID = str(st.secrets.get("TELEGRAM_CHAT_ID", "")).strip()
@@ -40,8 +165,10 @@ try:
     if data.empty or len(data) < 50:
         st.error("Veri havuzu henüz yeterli büyüklükte değil.")
     else:
-        # Süper Kompozit Hesaplama
-        data['Rasyo'] = data['Altın'] / (data['Bakır'] / data['Bitcoin'])
+        # Süper Kompozit Hesaplama — DÜZELTİLDİ: BTC paydada (Altın / (Bakır × Bitcoin))
+        # Bu, TradingView'deki XAUUSD/XCUUSD/BTCUSD oranıyla aynı yöndedir ve
+        # likidite göstergesi olarak BTC ile ters korelasyon sergiler.
+        data['Rasyo'] = data['Altın'] / (data['Bakır'] * data['Bitcoin'])
 
         # SMA penceresi 50'den 20 güne çekildi (daha hızlı tepki, daha fazla whipsaw riski)
         SMA_PENCERE = 20
@@ -90,14 +217,15 @@ try:
         # Kartlar
         col1, col2, col3, col4, col5 = st.columns(5)
         col1.metric("Bitcoin Fiyatı", f"${btc_fiyat:,.2f}")
-        col2.metric("Süper Rasyo / SMA20", f"{son_rasyo:,.1f} / {son_sma:,.1f}")
+        col2.metric("Süper Rasyo / SMA20", f"{son_rasyo:.3e} / {son_sma:.3e}")
 
-        if is_risk_on:
-            status_text = "🟢 REJİM: RISK-ON (Kripto Baharı)"
-            col3.success(status_text)
-        else:
-            status_text = "🔴 REJİM: RISK-OFF (Koruma Dönemi)"
-            col3.error(status_text)
+        with col3:
+            if is_risk_on:
+                st.markdown('<div class="lk-regime lk-regime-on">● RISK-ON<br><span style="font-weight:400;font-size:12px;color:#7C8595">Likidite genişliyor</span></div>', unsafe_allow_html=True)
+                status_text = "🟢 REJİM: RISK-ON (Likidite Genişliyor)"
+            else:
+                st.markdown('<div class="lk-regime lk-regime-off">● RISK-OFF<br><span style="font-weight:400;font-size:12px;color:#7C8595">Likidite daralıyor</span></div>', unsafe_allow_html=True)
+                status_text = "🔴 REJİM: RISK-OFF (Likidite Daralıyor)"
 
         col4.metric(
             label="8 Yıllık Strateji Bakiyesi (Giriş: $10K)",
@@ -113,11 +241,11 @@ try:
 
         fark = toplam_portfoy_degeri - bh_son_deger
         if fark < 0:
-            st.warning(f"⚠️ Strateji, sadece BTC tutmaya kıyasla **${abs(fark):,.2f}** daha az getiri sağladı (Strateji: %{kazanc_yuzdesi:+.2f} vs Al-Tut: %{bh_kazanc_yuzdesi:+.2f}).")
+            st.warning(f"Strateji, sadece BTC tutmaya kıyasla **${abs(fark):,.2f}** daha az getiri sağladı  ·  Strateji: %{kazanc_yuzdesi:+.2f}  vs  Al-Tut: %{bh_kazanc_yuzdesi:+.2f}")
         else:
-            st.success(f"✅ Strateji, sadece BTC tutmaya kıyasla **${fark:,.2f}** daha fazla getiri sağladı (Strateji: %{kazanc_yuzdesi:+.2f} vs Al-Tut: %{bh_kazanc_yuzdesi:+.2f}).")
+            st.success(f"Strateji, sadece BTC tutmaya kıyasla **${fark:,.2f}** daha fazla getiri sağladı  ·  Strateji: %{kazanc_yuzdesi:+.2f}  vs  Al-Tut: %{bh_kazanc_yuzdesi:+.2f}")
 
-        if st.button("📢 Güncel Durumu Telegram'a Raporla"):
+        if st.button("Güncel Durumu Telegram'a Gönder"):
             rapor_mesaji = (
                 f"⚡ *8 YILLIK TARİHSEL RAPOR* ⚡\n\n"
                 f"🪙 *BTC Fiyatı:* ${btc_fiyat:,.2f}\n"
@@ -128,53 +256,58 @@ try:
             )
             telegram_mesaj_gonder(rapor_mesaji)
 
-        st.subheader("🔄 8 Yıllık Tarihsel Süper Kompozit Grafik (2018 - 2026)")
+        st.markdown('<div class="lk-section">Süper Kompozit Rasyo · SMA20 Sinyal Hattı</div>', unsafe_allow_html=True)
 
         fig = go.Figure()
 
-        # 1. Çizgi: Süper Rasyo Hattı (Siyah)
-        fig.add_trace(go.Scatter(x=data.index, y=data['Rasyo'], name="Süper Rasyo", line=dict(color='black', width=1.5)))
+        # 1. Çizgi: Süper Rasyo Hattı
+        fig.add_trace(go.Scatter(x=data.index, y=data['Rasyo'], name="Süper Rasyo", line=dict(color='#7C8595', width=1.2)))
 
         # 📊 RENK DEĞİŞTİREN SMA20 ÇİZGİSİ
-        data['Renk'] = data.apply(lambda row: 'green' if row['Rasyo'] < row['SMA50'] else 'red', axis=1)
+        data['Renk'] = data.apply(lambda row: '#4ADE80' if row['Rasyo'] < row['SMA50'] else '#F87171', axis=1)
 
         for _, grup in data.groupby((data['Renk'] != data['Renk'].shift()).cumsum()):
             fig.add_trace(go.Scatter(
                 x=grup.index,
                 y=grup['SMA50'],
                 mode='lines',
-                line=dict(color=grup['Renk'].iloc[0], width=3),
+                line=dict(color=grup['Renk'].iloc[0], width=2.5),
                 showlegend=False
             ))
 
-        # 🪙 BTC FİYAT ÇİZGİSİ (ikinci y-ekseninde, turuncu, kesikli)
+        # 🪙 BTC FİYAT ÇİZGİSİ (ikinci y-ekseninde, altın rengi, kesikli)
         fig.add_trace(go.Scatter(
             x=data.index,
             y=data['Bitcoin'],
             name="BTC Fiyatı (USD)",
-            line=dict(color='orange', width=1.5, dash='dot'),
+            line=dict(color='#F0B90B', width=1.3, dash='dot'),
             yaxis="y2"
         ))
 
         fig.update_layout(
-            height=600,
-            template="plotly_white",
-            xaxis=dict(title="Tarih (8 Yıllık Geniş Perspektif)", linewidth=1, linecolor="gray"),
-            yaxis=dict(title="Süper Rasyo Değeri", title_font=dict(color="black"), tickfont=dict(color="black")),
+            height=560,
+            template="plotly_dark",
+            paper_bgcolor='#0B0E14',
+            plot_bgcolor='#0B0E14',
+            font=dict(family="Inter, sans-serif", color="#E6E9EF"),
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(title=None, gridcolor='#1E2430', linecolor='#1E2430'),
+            yaxis=dict(title="Süper Rasyo", gridcolor='#1E2430', title_font=dict(color="#7C8595"), tickfont=dict(color="#7C8595")),
             yaxis2=dict(
                 title="BTC Fiyatı (USD)",
-                title_font=dict(color="orange"),
-                tickfont=dict(color="orange"),
+                title_font=dict(color="#F0B90B"),
+                tickfont=dict(color="#F0B90B"),
                 overlaying="y",
-                side="right"
+                side="right",
+                gridcolor='rgba(0,0,0,0)'
             ),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor='rgba(0,0,0,0)')
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
         # 📈 STRATEJİ vs AL-TUT PORTFÖY DEĞERİ KARŞILAŞTIRMA GRAFİĞİ
-        st.subheader("⚖️ Strateji Bakiyesi vs BTC Al-Tut Bakiyesi (Giriş: $10.000)")
+        st.markdown('<div class="lk-section">Strateji Bakiyesi vs BTC Al-Tut Bakiyesi · Giriş $10.000</div>', unsafe_allow_html=True)
 
         # Portföy değerini gün gün yeniden hesapla (görselleştirme için)
         gunluk_strateji_degeri = []
@@ -201,21 +334,24 @@ try:
         data['Strateji_Deger'] = gunluk_strateji_degeri
 
         fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(x=data.index, y=data['Strateji_Deger'], name="Strateji Bakiyesi", line=dict(color='blue', width=2)))
-        fig2.add_trace(go.Scatter(x=data.index, y=data['BuyHold_Deger'], name="BTC Al-Tut Bakiyesi", line=dict(color='orange', width=2)))
+        fig2.add_trace(go.Scatter(x=data.index, y=data['Strateji_Deger'], name="Strateji Bakiyesi", line=dict(color='#6FE3B5', width=2)))
+        fig2.add_trace(go.Scatter(x=data.index, y=data['BuyHold_Deger'], name="BTC Al-Tut Bakiyesi", line=dict(color='#F0B90B', width=2)))
         fig2.update_layout(
-            height=450,
-            template="plotly_white",
-            xaxis=dict(title="Tarih"),
-            yaxis=dict(title="Portföy Değeri (USD)"),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            height=420,
+            template="plotly_dark",
+            paper_bgcolor='#0B0E14',
+            plot_bgcolor='#0B0E14',
+            font=dict(family="Inter, sans-serif", color="#E6E9EF"),
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(title=None, gridcolor='#1E2430', linecolor='#1E2430'),
+            yaxis=dict(title="Portföy Değeri (USD)", gridcolor='#1E2430', title_font=dict(color="#7C8595"), tickfont=dict(color="#7C8595")),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor='rgba(0,0,0,0)')
         )
         st.plotly_chart(fig2, use_container_width=True)
 
         # YAPAY ZEKA AJANI
-        st.markdown("---")
-        st.subheader("🤖 Tarihsel Döngü Uzmanı Yapay Zeka Danışmanı")
-        user_question = st.text_input("Yapay Zeka Ajanına 8 yıllık bu devasa geçmiş ve strateji hakkında bir soru sorun:")
+        st.markdown('<div class="lk-section">Yapay Zeka Danışmanı</div>', unsafe_allow_html=True)
+        user_question = st.text_input("8 yıllık geçmiş ve strateji hakkında bir soru sorun", label_visibility="collapsed", placeholder="Örn: Risk-off dönemlerinde strateji neden geride kalıyor?")
         if user_question:
             with st.spinner("8 yıllık veri analiz ediliyor..."):
                 try:
