@@ -5,8 +5,8 @@ import plotly.graph_objects as go
 import requests
 import json
 
-st.set_page_config(page_title="Makro Döngü Öncüsü & AI", layout="wide")
-st.title("📊 Küresel Risk İştahı ve Bitcoin Döngü Pusulası")
+st.set_page_config(page_title="Süper Kompozit Döngü Öncüsü", layout="wide")
+st.title("📊 Süper Kompozit Rasyo ve Bitcoin Al-Sat Simülatörü")
 
 TOKEN = str(st.secrets.get("TELEGRAM_TOKEN", "")).strip()
 CHAT_ID = str(st.secrets.get("TELEGRAM_CHAT_ID", "")).strip()
@@ -24,7 +24,7 @@ def telegram_mesaj_gonder(mesaj):
 
 @st.cache_data(ttl=3600)
 def verileri_getir():
-    semboller = {"GC=F": "Altın", "SI=F": "Gümüş", "HG=F": "Bakır", "BTC-USD": "Bitcoin"}
+    semboller = {"GC=F": "Altın", "HG=F": "Bakır", "BTC-USD": "Bitcoin"}
     df = yf.download(list(semboller.keys()), period="2y", interval="1d")
     if 'Close' in df.columns:
         df = df['Close']
@@ -35,30 +35,34 @@ def verileri_getir():
 try:
     data = verileri_getir()
     
-    if data.empty or len(data) < 20:
+    if data.empty or len(data) < 50:
         st.error("Veri havuzu henüz yeterli büyüklükte değil.")
     else:
-        data['Rasyo'] = data['Altın'] / (data['Gümüş'] + data['Bakır'])
-        data['SMA20'] = data['Rasyo'].rolling(window=20).mean()
+        # 🚀 YENİ SÜPER KOMPOZİT FORMÜL HESAPLAMASI
+        # Altın / (Bakır / Bitcoin) 
+        data['Rasyo'] = data['Altın'] / (data['Bakır'] / data['Bitcoin'])
+        
+        # Büyük dalgaları yakalamak için SMA 50 yapıldı (Gürültüler temizlendi)
+        data['SMA50'] = data['Rasyo'].rolling(window=50).mean()
         data = data.dropna().copy()
         
-        # 🚀 10.000 DOLARLIK GEÇMİŞE DÖNÜK AL-SAT SİMÜLASYONU (BACKTEST)
+        # 💰 10.000 DOLARLIK GEÇMİŞE DÖNÜK AL-SAT SİMÜLASYONU
         bakiye_usd = 10000.0
         btc_adet = 0.0
-        pozisyonda_mi = False
+        pozisyonda_mi = False  # True = BTC'deyiz, False = Nakit Dolar'dayız
         
         for i in range(len(data)):
             anlik_rasyo = data['Rasyo'].iloc[i]
-            anlik_sma = data['SMA20'].iloc[i]
+            anlik_sma = data['SMA50'].iloc[i]
             anlik_btc_fiyat = data['Bitcoin'].iloc[i]
             
-            # SİNYAL: Risk-On (Rasyo < SMA) -> BTC AL
+            # SİNYAL DEĞİŞTİ: Süper rasyo ortalamanın ALTINA indiğinde = Kripto Boğası başlar -> BTC AL
             if anlik_rasyo < anlik_sma and not pozisyonda_mi:
                 btc_adet = bakiye_usd / anlik_btc_fiyat
                 bakiye_usd = 0.0
                 pozisyonda_mi = True
                 
-            # SİNYAL: Risk-Off (Rasyo >= SMA) -> BTC SAT, DOLARA GEÇ
+            # SİNYAL DEĞİŞTİ: Süper rasyo ortalamanın ÜSTÜNE çıktığında = Kriz/Savunma başlar -> BTC SAT
             elif anlik_rasyo >= anlik_sma and pozisyonda_mi:
                 bakiye_usd = btc_adet * anlik_btc_fiyat
                 btc_adet = 0.0
@@ -67,15 +71,16 @@ try:
         toplam_portfoy_degeri = bakiye_usd if not pozisyonda_mi else (btc_adet * data['Bitcoin'].iloc[-1])
         kazanc_yuzdesi = ((toplam_portfoy_degeri - 10000.0) / 10000.0) * 100
         
+        # Son Değerler
         son_rasyo = data['Rasyo'].iloc[-1]
-        son_sma = data['SMA20'].iloc[-1]
+        son_sma = data['SMA50'].iloc[-1]
         btc_fiyat = data['Bitcoin'].iloc[-1]
         is_risk_on = son_rasyo < son_sma
         
-        # Üst Metrik Kartları (4 Kolon)
+        # Kartlar
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Bitcoin Fiyatı", f"${btc_fiyat:,.2f}")
-        col2.metric("Metal Rasyosu / SMA20", f"{son_rasyo:.3f} / {son_sma:.3f}")
+        col2.metric("Süper Rasyo / SMA50", f"{son_rasyo:,.1f} / {son_sma:,.1f}")
         
         if is_risk_on:
             status_text = "🟢 REJİM: RISK-ON (Kripto Baharı)"
@@ -85,76 +90,58 @@ try:
             col3.error(status_text)
             
         col4.metric(
-            label="Strateji Bakiyesi (Başlangıç: $10K)", 
+            label="Süper Strateji Bakiyesi (Başlangıç: $10K)", 
             value=f"${toplam_portfoy_degeri:,.2f}", 
             delta=f"%{kazanc_yuzdesi:+.2f} Kazanç"
         )
             
         if st.button("📢 Güncel Durumu Telegram'a Raporla"):
             rapor_mesaji = (
-                f"📊 *Günlük Makro Döngü Raporu*\n\n"
+                f"⚡ *SÜPER KOMPOZİT RAPOR* ⚡\n\n"
                 f"🪙 *BTC Fiyatı:* ${btc_fiyat:,.2f}\n"
-                f"📈 *Metal Rasyosu:* {son_rasyo:.3f}\n"
-                f"📉 *Sinyal Hattı (SMA20):* {son_sma:.3f}\n\n"
+                f"📊 *Süper Rasyo:* {son_rasyo:,.1f}\n"
+                f"📈 *Sinyal Hattı (SMA50):* {son_sma:,.1f}\n\n"
                 f"🚨 *Piyasa Durumu:* {status_text}\n"
-                f"💰 *Simülasyon Portföyü:* ${toplam_portfoy_degeri:,.2f} (%{kazanc_yuzdesi:+.2f})"
+                f"💰 *10K Strateji Portföyü:* ${toplam_portfoy_degeri:,.2f} (%{kazanc_yuzdesi:+.2f})"
             )
             telegram_mesaj_gonder(rapor_mesaji)
 
-        st.subheader("🔄 Tek Grafikte Zıt Korelasyon ve Renk Değiştiren Sinyal Hattı")
+        st.subheader("🔄 Tek Grafikte Süper Kompozit Rasyo (Sarı/Yeşil/Kırmızı Sinyal Gösterimi)")
         
         fig = go.Figure()
 
-        # 1. Çizgi: Bitcoin
-        fig.add_trace(go.Scatter(x=data.index, y=data['Bitcoin'], name="Bitcoin (Sol Eksen)", line=dict(color='orange', width=3)))
+        # 1. Çizgi: Süper Rasyo Hattı (Siyah)
+        fig.add_trace(go.Scatter(x=data.index, y=data['Rasyo'], name="Süper Rasyo", line=dict(color='black', width=2)))
 
-        # 2. Çizgi: Metal Rasyosu
-        fig.add_trace(go.Scatter(x=data.index, y=data['Rasyo'], name="3'lü Metal Rasyosu", line=dict(color='black', width=1.5), yaxis="y2"))
-
-        # 📊 RENK DEĞİŞTİREN SMA ÇİZGİSİ
-        data['Renk'] = data.apply(lambda row: 'green' if row['Rasyo'] < row['SMA20'] else 'red', axis=1)
+        # 📊 RENK DEĞİŞTİREN SMA50 ÇİZGİSİ (Risk-On ise Yeşil, Risk-Off ise Kırmızı)
+        data['Renk'] = data.apply(lambda row: 'green' if row['Rasyo'] < row['SMA50'] else 'red', axis=1)
         
-        # Kesintisiz çizim için ardışık renk bloklarını gruplayıp çizdiriyoruz
         for _, grup in data.groupby((data['Renk'] != data['Renk'].shift()).cumsum()):
             fig.add_trace(go.Scatter(
                 x=grup.index,
-                y=grup['SMA20'],
+                y=grup['SMA50'],
                 mode='lines',
-                line=dict(color=grup['Renk'].iloc[0], width=2.5),
-                showlegend=False,
-                yaxis="y2"
+                line=dict(color=grup['Renk'].iloc[0], width=3),
+                showlegend=False
             ))
 
-        # Tüm 'titlefont' parametreleri güncel Plotly standartlarına göre yapılandırıldı
         fig.update_layout(
             height=600,
             template="plotly_white",
             xaxis=dict(title="Tarih", linewidth=1, linecolor="gray"),
-            yaxis=dict(
-                title=dict(text="Bitcoin Fiyatı ($)", font=dict(color="orange")), 
-                tickfont=dict(color="orange"), 
-                side="left"
-            ),
-            yaxis2=dict(
-                title=dict(text="Metal Rasyosu (Yeşil: Risk-On / Kırmızı: Risk-Off)", font=dict(color="black")), 
-                tickfont=dict(color="black"), 
-                overlaying="y", 
-                side="right", 
-                anchor="x"
-            ),
-            legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.5)")
+            yaxis=dict(title="Süper Rasyo Değeri", title_font=dict(color="black"), tickfont=dict(color="black"))
         )
         
         st.plotly_chart(fig, use_container_width=True)
 
         # YAPAY ZEKA AJANI
         st.markdown("---")
-        st.subheader("🤖 Makro Pusula Yapay Zeka Danışmanı")
-        user_question = st.text_input("Yapay Zeka Ajanına bir soru sorun:")
+        st.subheader("🤖 Süper Kompozit Yapay Zeka Danışmanı")
+        user_question = st.text_input("Yapay Zeka Ajanına bu yeni süper endeks hakkında bir soru sorun:")
         if user_question:
             with st.spinner("Analiz ediliyor..."):
                 try:
-                    system_context = f"Sen makro uzmanısın. Başlangıçtaki 10.000 dolar bu indikatöre göre işletildi ve şu an ${toplam_portfoy_degeri:,.2f} oldu. Güncel piyasa {status_text} modunda. Kullanıcıya bu karlılık performansını ve grafikteki renkli SMA çizgilerini yorumlayan Türkçe bir analiz yap."
+                    system_context = f"Sen dünyanın en iyi hedge fonu yöneticisisin. Kullanıcının yeni formülü 'Altın / (Bakır / Bitcoin)' rasyosunu analiz ediyorsun. 10.000 dolar bu kuralla işletildi ve şu an ${toplam_portfoy_degeri:,.2f} oldu. Mevcut rejim {status_text}. Bu muazzam karlılığı ve renk değiştiren SMA50 çizgilerini Türkçe yorumla."
                     response = requests.post("https://openrouter.ai", 
                         headers={"Authorization": "Bearer free", "Content-Type": "application/json"},
                         data=json.dumps({
