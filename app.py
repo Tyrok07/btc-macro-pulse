@@ -138,6 +138,7 @@ def telegram_gonder(mesaj):
 @st.cache_data(ttl=3600)
 def verileri_getir():
     semboller = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
+
     df = yf.download(
         list(semboller.keys()),
         period="8y",
@@ -147,22 +148,37 @@ def verileri_getir():
         multi_level_index=False,
         progress=False
     )
+
     if df.empty:
-        return df
-
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    if "Close" not in df.columns:
         return pd.DataFrame()
 
-    close_df = df["Close"].copy()
+    if isinstance(df.columns, pd.MultiIndex):
+        if "Close" in df.columns.get_level_values(0):
+            df = df["Close"].copy()
+        else:
+            df.columns = df.columns.get_level_values(0)
+
+    if "Close" in df.columns:
+        close_df = df["Close"].copy()
+    else:
+        close_df = df.copy()
 
     if isinstance(close_df, pd.Series):
         close_df = close_df.to_frame()
 
-    close_df = close_df.rename(columns=semboller)
-    return close_df.ffill().bfill()
+    rename_map = {}
+    for col in close_df.columns:
+        if col in semboller:
+            rename_map[col] = semboller[col]
+
+    close_df = close_df.rename(columns=rename_map)
+
+    gerekli = ["Altin", "Bakir", "Bitcoin"]
+    if not all(col in close_df.columns for col in gerekli):
+        raise ValueError(f"Eksik kolonlar: {set(gerekli) - set(close_df.columns)} | Gelen kolonlar: {list(close_df.columns)}")
+
+    close_df = close_df[gerekli].ffill().bfill()
+    return close_df
 
 def gemini_api(prompt):
     if not GEMINI_KEY:
