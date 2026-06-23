@@ -12,8 +12,8 @@ st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_ic
 BASE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 STATE_DIR = BASE_DIR / "state"
 STATE_DIR.mkdir(exist_ok=True)
-ROTATION_LOG_FILE = STATE_DIR / "rotasyon_log_live.csv"
 ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
+ROTATION_LOG_FILE = STATE_DIR / "rotasyon_log_live.csv"
 
 st.markdown("""
 <style>
@@ -97,8 +97,7 @@ def verileri_getir():
 def gemini_api(prompt):
     if not GEMINI_KEY:
         return None
-    models = ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]
-    for model in models:
+    for model in ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
             r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
@@ -150,7 +149,7 @@ def backtest_trades(df):
         btc_px, alt_px = row["Bitcoin"], row["Altin"]
 
         if r < s10 and r < s50:
-            regime = "BITCOIN"
+            regime = "Güçlü Boğa"
             target_btc, target_alt = 100, 0
         elif r < s50 and r >= s10:
             regime = "Boğa + Düzeltme"
@@ -163,7 +162,7 @@ def backtest_trades(df):
         changed = (prev_regime is None) or (regime != prev_regime)
 
         if changed:
-            if regime == "BITCOIN":
+            if regime == "Güçlü Boğa":
                 btc_qty = port_before / btc_px
                 alt_qty = 0.0
                 cash = 0.0
@@ -179,28 +178,18 @@ def backtest_trades(df):
             port_after = cash + btc_qty * btc_px + alt_qty * alt_px
             rows.append({
                 "Tarih": pd.to_datetime(idx).strftime("%Y-%m-%d"),
-                "Eski_Rejim": prev_regime or "Yok",
-                "Yeni_Rejim": regime,
-                "Islem": f"{prev_regime or 'Yok'} → {regime}",
-                "BTC_Pct": target_btc,
-                "Altin_Pct": target_alt,
-                "Portfoy_Oncesi": round(port_before, 2),
-                "Portfoy_Sonrasi": round(port_after, 2),
-                "Günlük_Portfoy": round(port_after, 2),
-                "Kümülatif_Getiri_%": round((port_after / 10000.0 - 1) * 100, 2),
+                "İşlem": f"{prev_regime or 'Yok'} → {regime}",
+                "Dağılım": f"BTC %{target_btc} / Altın %{target_alt}",
+                "Portföy": round(port_after, 2),
+                "Getiri": round((port_after / 10000.0 - 1) * 100, 2),
                 "Not": "Rejim değişimi"
             })
             prev_regime = regime
 
-        equity_curve.append({
-            "Tarih": idx,
-            "Portfoy": cash + btc_qty * btc_px + alt_qty * alt_px
-        })
+        equity_curve.append({"Tarih": idx, "Portföy": cash + btc_qty * btc_px + alt_qty * alt_px})
 
     trade_log = pd.DataFrame(rows)
     equity_df = pd.DataFrame(equity_curve).set_index("Tarih")
-    if not trade_log.empty:
-        trade_log["Önceki_Satır_Getiri_%"] = trade_log["Portfoy_Sonrasi"].pct_change().fillna(0) * 100
     return d, trade_log, equity_df
 
 try:
@@ -210,9 +199,6 @@ try:
         st.stop()
 
     data, trade_log, equity_df = backtest_trades(raw)
-    if trade_log.empty:
-        st.error("İşlem günlüğü üretilemedi.")
-        st.stop()
 
     last = data.iloc[-1]
     btc_fiyat = last["Bitcoin"]
@@ -226,7 +212,7 @@ try:
     makro_bull = son_rasyo < sma50
 
     if makro_bull and kisa_bull:
-        rejim_kodu = "strong_on"; rejim_etiketi = "🟢🟢 BITCOIN"; rejim_aciklama = "Her iki sinyal BTC lehine"; status_text = "BITCOIN"; btc_pct_now, alt_pct_now = 100, 0
+        rejim_kodu = "strong_on"; rejim_etiketi = "🟢🟢 GÜÇLÜ BOĞA"; rejim_aciklama = "Her iki sinyal BTC lehine"; status_text = "Güçlü Boğa"; btc_pct_now, alt_pct_now = 100, 0
     elif makro_bull and not kisa_bull:
         rejim_kodu = "weak_on"; rejim_etiketi = "🟡🟢 BOĞA + Kısa Düzeltme"; rejim_aciklama = "Büyük trend yukarı"; status_text = "Boğa + Düzeltme"; btc_pct_now, alt_pct_now = 50, 50
     elif not makro_bull and kisa_bull:
@@ -239,18 +225,36 @@ try:
     data["BuyHold"] = bh_qty * data["Bitcoin"]
     bh_son = data["BuyHold"].iloc[-1]
     bh_kazanc = (bh_son / 10000.0 - 1) * 100
-
     rot_son = equity_df["Portfoy"].iloc[-1]
     rot_kazanc = (rot_son / 10000.0 - 1) * 100
 
-    st.title("Likidite Kompozit Paneli")
+    st.markdown("""
+    <div class="lk-shell">
+    <div class="lk-header">
+        <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD · Likidite Kompoziti · 8 Yıllık Analiz</div>
+        <p class="lk-title">Süper Kompozit Likidite Paneli</p>
+        <p class="lk-subtitle">Altın · Bakır · Bitcoin rasyosu üzerinden likidite yönü, rejim ve BTC fırsatlarını takip et</p>
+    </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Bitcoin", f"${btc_fiyat:,.0f}", f"{format_pct((btc_fiyat / data['Bitcoin'].iloc[-2] - 1) * 100)} son gün")
     c2.metric("Altın", f"${altin_fiyat:,.0f}", f"{format_pct((altin_fiyat / data['Altin'].iloc[-2] - 1) * 100)} son gün")
     c3.metric("8Y Rotasyon", f"${rot_son:,.0f}", f"{format_pct(rot_kazanc)}")
     c4.metric("BTC Al-Tut", f"${bh_son:,.0f}", f"{format_pct(bh_kazanc)}")
 
-    st.markdown(f"**Güncel Rejim:** {rejim_etiketi} · {rejim_aciklama}")
+    st.markdown(f"""
+    <div class="lk-regime lk-regime-{rejim_kodu.replace('_','-')}">
+        <span>{rejim_etiketi}</span>
+        <span style="font-weight:400; font-size:12px; color:#7C8595">{rejim_aciklama}</span>
+        <span style="margin-left:auto; font-size:13px; color:#E6E9EF;">
+            Şu an: <b style="color:#F0B90B">BTC %{btc_pct_now:.0f}</b>
+            &nbsp;·&nbsp;
+            <b style="color:#E5C07B">Altın %{alt_pct_now:.0f}</b>
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
 
     st.markdown("## Likidite Rasyosu")
     fig1 = go.Figure()
@@ -261,7 +265,7 @@ try:
     fig1.update_layout(height=520, template="plotly_dark", paper_bgcolor="#0F131C", plot_bgcolor="#0F131C", yaxis=dict(title="Rasyo"), yaxis2=dict(title="BTC", overlaying="y", side="right"))
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.markdown("## Güncel Özet")
+    st.markdown("## Sade Özet")
     st.dataframe(pd.DataFrame({
         "Alan": ["Rejim", "SMA10", "SMA50", "Rasyo", "BTC %", "Altın %"],
         "Değer": [status_text, f"{sma10:.6e}", f"{sma50:.6e}", f"{son_rasyo:.6e}", f"%{btc_pct_now:.0f}", f"%{alt_pct_now:.0f}"]
@@ -283,12 +287,6 @@ try:
         with st.spinner("Piyasa verileri yorumlanıyor..."):
             yorum = gemini_yorum_cache(round(btc_fiyat / 500) * 500, status_text, rot_kazanc, bh_kazanc, rot_son, bh_son, kisa_bull, makro_bull)
     st.markdown(f'<div class="lk-ai-box">{yorum if yorum else "AI yorumu alınamadı. Veriler normal çalışıyor."}</div>', unsafe_allow_html=True)
-
-    st.markdown("## Son Güncelleme")
-    st.dataframe(pd.DataFrame({
-        "Alan": ["BTC", "Altın", "Bakır", "Rotasyon", "BTC Al-Tut"],
-        "Değer": [f"${btc_fiyat:,.0f}", f"${altin_fiyat:,.0f}", f"${bakir_fiyat:,.0f}", f"${rot_son:,.0f}", f"${bh_son:,.0f}"]
-    }), use_container_width=True, hide_index=True)
 
 except Exception as e:
     st.error(f"Genel hata: {e}")
