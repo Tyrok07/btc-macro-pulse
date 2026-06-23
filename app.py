@@ -4,8 +4,15 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import json
+import threading
 from pathlib import Path
 from datetime import datetime
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    SCHEDULER_OK = True
+except ImportError:
+    SCHEDULER_OK = False
 
 # ── SAYFA AYARI ──────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_icon="◆")
@@ -58,6 +65,111 @@ st.markdown("""
 GEMINI_KEY = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
 TOKEN      = str(st.secrets.get("TELEGRAM_TOKEN",  "")).strip()
 CHAT_ID    = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
+KONTROL_ARALIK = 15  # dakika
+
+# ── ARKA PLAN REJİM KONTROL FONKSİYONU ───────────────────────────────────────
+def rejim_hesapla_ve_bildir():
+    """
+    Arka planda çalışır — sayfa açık olmasa bile her KONTROL_ARALIK dakikada bir
+    veri çeker, rejim değişmişse Telegram'a otomatik alarm gönderir.
+    """
+    try:
+        symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
+        df = yf.download(list(symbols.keys()), period="60d", interval="1d",
+                         auto_adjust=False, progress=False)
+        if df.empty:
+            return
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df["Close"] if "Close" in df.columns.get_level_values(0) else df
+        elif "Close" in df.columns:
+            df = df["Close"]
+
+        df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
+        df = df[["Altin", "Bakir", "Bitcoin"]].ffill().bfill().dropna()
+        if len(df) < 52:
+            return
+
+        df["Rasyo"] = df["Altin"] / (df["Bakir"] * df["Bitcoin"])
+        df["SMA10"] = df["Rasyo"].rolling(10).mean()
+        df["SMA50"] = df["Rasyo"].rolling(50).mean()
+        df = df.dropna()
+
+        last       = df.iloc[-1]
+        r, s10, s50 = float(last["Rasyo"]), float(last["SMA10"]), float(last["SMA50"])
+        btc_fiyat  = float(last["Bitcoin"])
+        alt_fiyat  = float(last["Altin"])
+
+        kisa_bull  = r < s10
+        makro_bull = r < s50
+
+        if makro_bull and kisa_bull:
+            rejim = "🟢🟢 GÜÇLÜ BOĞA";       btc_p, alt_p = 100, 0
+        elif makro_bull and not kisa_bull:
+            rejim = "🟡🟢 BOĞA + Kısa Düzeltme"; btc_p, alt_p = 50, 50
+        elif not makro_bull and kisa_bull:
+            rejim = "🟠🔴 AYI + Kısa Toparlanma"; btc_p, alt_p = 0, 100
+        else:
+            rejim = "🔴🔴 GÜÇLÜ AYI";        btc_p, alt_p = 0, 100
+
+        # Önceki rejimi dosyadan oku
+        state = {}
+        try:
+            if ALERT_STATE_FILE.exists():
+                state = json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+        prev = state.get("rejim", "")
+
+        if prev and prev != rejim:
+            # REJİM DEĞİŞTİ → Telegram'a gönder
+            mesaj = (
+                f"🚨 *REJİM DEĞİŞİMİ ALARMI* 🚨\n\n"
+                f"*{prev}*\n"
+                f"⬇️\n"
+                f"*{rejim}*\n\n"
+                f"🪙 BTC: ${btc_fiyat:,.0f}\n"
+                f"🥇 Altın: ${alt_fiyat:,.0f}\n"
+                f"💼 Yeni Pozisyon: BTC %{btc_p} · Altın %{alt_p}\n\n"
+                f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            )
+            if TOKEN and CHAT_ID:
+                try:
+                    requests.post(
+                        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                        json={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"},
+                        timeout=10
+                    )
+                except Exception:
+                    pass
+
+        # Yeni rejimi kaydet (tarih damgasıyla)
+        state["rejim"]       = rejim
+        state["son_kontrol"] = datetime.now().isoformat(timespec="seconds")
+        state["btc_fiyat"]   = round(btc_fiyat, 0)
+        state["alt_fiyat"]   = round(alt_fiyat, 0)
+        ALERT_STATE_FILE.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    except Exception:
+        pass   # Sessizce geç — arka plan thread'i asla çökmemeli
+
+
+# ── SCHEDULER BAŞLAT (tek seferlik) ──────────────────────────────────────────
+if SCHEDULER_OK and "scheduler_started" not in st.session_state:
+    _scheduler = BackgroundScheduler(timezone="Europe/Istanbul")
+    _scheduler.add_job(
+        rejim_hesapla_ve_bildir,
+        trigger="interval",
+        minutes=KONTROL_ARALIK,
+        id="rejim_kontrol",
+        replace_existing=True,
+        next_run_time=datetime.now()   # ilk çalışma hemen
+    )
+    _scheduler.start()
+    st.session_state["scheduler_started"] = True
 
 # ── YARDIMCI FONKSİYONLAR ────────────────────────────────────────────────────
 def load_state():
@@ -438,22 +550,24 @@ try:
     styled = trade_log.style.apply(renk_satir, axis=1)
     st.dataframe(styled, use_container_width=True, hide_index=True)
 
-    # ── 8. OTOMATİK TELEGRAM ALARMI ─────────────────────────────────────────
+    # ── 8. OTOMATİK ALARM DURUMU ────────────────────────────────────────────
     state = load_state()
+    son_kontrol = state.get("son_kontrol", "Henüz çalışmadı")
     prev_rejim_kayit = state.get("rejim", "")
-    if prev_rejim_kayit != rejim_etiketi and prev_rejim_kayit != "":
-        mesaj = (
-            f"🚨 *REJİM DEĞİŞİMİ* 🚨\n\n"
-            f"*{prev_rejim_kayit}*  →  *{rejim_etiketi}*\n\n"
-            f"🪙 BTC: {fmt_usd(btc_fiyat)}\n"
-            f"🥇 Altın: {fmt_usd(alt_fiyat)}\n"
-            f"💼 Yeni Pozisyon: BTC %{btc_pct_now} · Altın %{alt_pct_now}\n\n"
-            f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-        )
-        if telegram_gonder(mesaj):
-            st.toast("📲 Rejim değişimi Telegram'a gönderildi!", icon="✅")
-    state["rejim"] = rejim_etiketi
-    save_state(state)
+
+    st.markdown('<div class="lk-section">Otomatik Alarm Sistemi</div>', unsafe_allow_html=True)
+
+    a1, a2, a3 = st.columns(3)
+    a1.metric("Kontrol Sıklığı",   f"Her {KONTROL_ARALIK} dakika",
+              "7/24 aktif" if SCHEDULER_OK else "APScheduler kurulu değil")
+    a2.metric("Son Kontrol",
+              son_kontrol[11:16] if len(son_kontrol) > 10 else "—",
+              son_kontrol[:10] if len(son_kontrol) > 10 else "Bekleniyor")
+    a3.metric("İzlenen Rejim",     prev_rejim_kayit or "—",
+              "Değişince Telegram alarm")
+
+    if not SCHEDULER_OK:
+        st.warning("APScheduler kurulu değil. `pip install apscheduler` komutunu `requirements.txt`'e ekleyin.")
 
     # ── 9. YAPAY ZEKA YORUMU ─────────────────────────────────────────────────
     st.markdown('<div class="lk-section">Yapay Zeka Piyasa Yorumu</div>', unsafe_allow_html=True)
