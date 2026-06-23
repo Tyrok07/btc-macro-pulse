@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -6,20 +7,32 @@ import requests
 import json
 from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Yerel geliştirme ortamındaki .env dosyasını yükle
+load_dotenv()
+
+# ── SAYFA AYARI ───────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_icon="◆")
+
+# Streamlit Secrets veya Ortam Değişkenleri senkronizasyonu
+if "GEMINI_API_KEY" not in st.secrets:
+    st.secrets["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY", "")
+if "TELEGRAM_TOKEN" not in st.secrets:
+    st.secrets["TELEGRAM_TOKEN"] = os.getenv("TELEGRAM_TOKEN", "")
+if "TELEGRAM_CHAT_ID" not in st.secrets:
+    st.secrets["TELEGRAM_CHAT_ID"] = os.getenv("TELEGRAM_CHAT_ID", "")
+
+BASE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+STATE_DIR = BASE_DIR / "state"
+STATE_DIR.mkdir(exist_ok=True)
+ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     SCHEDULER_OK = True
 except ImportError:
     SCHEDULER_OK = False
-
-# ── SAYFA AYARI ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_icon="◆")
-
-BASE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
-STATE_DIR = BASE_DIR / "state"
-STATE_DIR.mkdir(exist_ok=True)
-ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
 
 # ── AYDINLIK TEMA CSS ─────────────────────────────────────────────────────────
 st.markdown("""
@@ -56,7 +69,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── SECRETS ───────────────────────────────────────────────────────────────────
+# ── SECRETS / ENV CONFIG ──────────────────────────────────────────────────────
 GEMINI_KEY = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
 TOKEN = str(st.secrets.get("TELEGRAM_TOKEN", "")).strip()
 CHAT_ID = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
@@ -206,27 +219,34 @@ def backtest_rotasyon(df):
     stats = {"islem_sayisi": len(trade_rows), "btc_gun": btc_gun, "alt_gun": alt_gun, "max_dd": round(max_dd, 1), "toplam_gun": len(d)}
     return d, pd.DataFrame(trade_rows), stats
 
+# ── MODERN GOOGLE-GENAI SDK ENTEGRASYONU ──────────────────────────────────────
 @st.cache_data(ttl=3600)
 def gemini_api_yorum_uret(rejim_adi):
     if not GEMINI_KEY:
         return "Gemini API anahtarı ayarlanmamış. Analiz üretilemiyor."
     
-    prompt = (
-        f"Sen deneyimli bir makro ekonomi ve kripto para analistisin. "
-        f"Küresel likidite rasyolarına göre piyasa şu an şu rejimde: '{rejim_adi}'. "
-        f"Bu durumu teknik jargon kullanmadan, sıradan bir yatırımcının kolayca anlayabileceği bir dille yorumla. "
-        f"Yatırımcının şu an ne yapması gerektiğine, portföyünü nasıl yönetmesi gerektiğine dair net tavsiyeler ver. "
-        f"Cevabın toplamda 4 ile 6 cümle arasında, akıcı ve bilgilendirici olsun."
-    )
-    
-    for model in ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
-            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
-            if r.status_code == 429: continue
-            r.raise_for_status()
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
-        except Exception: continue
+    try:
+        from google import genai
+        client = genai.Client(api_key=GEMINI_KEY)
+        
+        prompt = (
+            f"Sen deneyimli bir makro ekonomi ve kripto para analistisin. "
+            f"Küresel likidite rasyolarına göre piyasa şu an şu rejimde: '{rejim_adi}'. "
+            f"Bu durumu teknik jargon kullanmadan, sıradan bir yatırımcının kolayca anlayabileceği bir dille yorumla. "
+            f"Yatırımcının şu an ne yapması gerektiğine, portföyünü nasıl yönetmesi gerektiğine dair net tavsiyeler ver. "
+            f"Cevabın toplamda 4 ile 6 cümle arasında, akıcı ve bilgilendirici olsun."
+        )
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        
+        if response.text:
+            return response.text
+            
+    except Exception:
+        pass
     return "Yapay zeka analiz motoruna şu an erişilemiyor. Lütfen daha sonra tekrar deneyin."
 
 # ── ANA UYGULAMA GÖRÜNÜMÜ ─────────────────────────────────────────────────────
