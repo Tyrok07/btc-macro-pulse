@@ -274,8 +274,14 @@ try:
     bh_btc_k = (bh_btc_son / 10000.0 - 1) * 100
     bh_alt_son = float(data["BH_Altin"].iloc[-1])
     bh_alt_k = (bh_alt_son / 10000.0 - 1) * 100
-    btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100
-    alt_degisim = (alt_fiyat / float(data["Altin"].iloc[-2]) - 1) * 100
+    
+    # ── GÜVENLİ DEĞİŞİM HESAPLAMA (Index Out-Of-Bounds Koruması) ──────────────────
+    if len(data) >= 2:
+        btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100
+        alt_degisim = (alt_fiyat / float(data["Altin"].iloc[-2]) - 1) * 100
+    else:
+        btc_degisim = 0.0
+        alt_degisim = 0.0
 
     # Metrik Kartları
     c1, c2, c3, c4, c5 = st.columns(5)
