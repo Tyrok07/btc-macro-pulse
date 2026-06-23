@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import json
-import threading
 from pathlib import Path
 from datetime import datetime
 
@@ -14,7 +13,7 @@ try:
 except ImportError:
     SCHEDULER_OK = False
 
-# ── SAYFA AYARI ──────────────────────────────────────────────────────────────
+# ── SAYFA AYARI ───────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_icon="◆")
 
 BASE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
@@ -42,10 +41,6 @@ div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; fon
 .lk-regime-strong-off { background: rgba(239,68,68,0.10);  border-color: rgba(239,68,68,0.4);  color: #F87171; }
 .lk-section { font-size: 15px; font-weight: 600; color: #F2F4F8; margin: 28px 0 12px 0; padding-left: 10px; border-left: 3px solid #6FE3B5; }
 .lk-ai-box { background: #131722; border: 1px solid #1E2430; border-radius: 12px; padding: 20px 24px; line-height: 1.80; font-size: 15px; color: #C8CDD8; }
-.lk-stat-box { background: #131722; border: 1px solid #1E2430; border-radius: 12px; padding: 16px 18px; }
-.lk-stat-label { color: #7C8595; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-.lk-stat-value { font-family: 'JetBrains Mono', monospace; font-size: 18px; color: #F2F4F8; font-weight: 700; }
-.lk-stat-sub { font-size: 12px; color: #7C8595; margin-top: 2px; }
 .stButton > button { background: #131722; border: 1px solid #2A3140; color: #E6E9EF; border-radius: 8px; font-weight: 500; padding: 8px 18px; }
 .stButton > button:hover { border-color: #6FE3B5; color: #6FE3B5; }
 .stTextInput input { background: #131722; border: 1px solid #1E2430; color: #E6E9EF; border-radius: 8px; }
@@ -55,131 +50,61 @@ div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; fon
 # ── BAŞLIK ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="lk-header">
-    <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD &nbsp;·&nbsp; Likidite Kompoziti &nbsp;·&nbsp; 8 Yıllık Analiz</div>
+    <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD · Likidite Kompoziti · 8 Yıllık Analiz</div>
     <p class="lk-title">Süper Kompozit Likidite Paneli</p>
     <p class="lk-subtitle">Altın · Bakır · Bitcoin rasyosu üzerinden küresel likidite yönünü ve fırsatları takip et</p>
 </div>
 """, unsafe_allow_html=True)
 
 # ── SECRETS ───────────────────────────────────────────────────────────────────
-GEMINI_KEY = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
-TOKEN      = str(st.secrets.get("TELEGRAM_TOKEN",  "")).strip()
-CHAT_ID    = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
-KONTROL_ARALIK = 15  # dakika
+GEMINI_KEY      = str(st.secrets.get("GEMINI_API_KEY",  "")).strip()
+TOKEN           = str(st.secrets.get("TELEGRAM_TOKEN",  "")).strip()
+CHAT_ID         = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
+KONTROL_ARALIK  = 15  # dakika
 
-# ── ARKA PLAN REJİM KONTROL FONKSİYONU ───────────────────────────────────────
-def rejim_hesapla_ve_bildir():
+# ══════════════════════════════════════════════════════════════════════════════
+# TEK REJİM FONKSİYONU — hem backtest hem UI hem scheduler burayı kullanır.
+# Kural değişirse sadece burası güncellenir, her yer otomatik yansır.
+# ══════════════════════════════════════════════════════════════════════════════
+def rejim_tespit(r, s10, s50):
     """
-    Arka planda çalışır — sayfa açık olmasa bile her KONTROL_ARALIK dakikada bir
-    veri çeker, rejim değişmişse Telegram'a otomatik alarm gönderir.
+    Girdi : rasyo, SMA10, SMA50
+    Çıktı : (isim, btc_pct, alt_pct, css_kodu, emoji_etiket, açıklama)
     """
-    try:
-        symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
-        df = yf.download(list(symbols.keys()), period="60d", interval="1d",
-                         auto_adjust=False, progress=False)
-        if df.empty:
-            return
-
-        if isinstance(df.columns, pd.MultiIndex):
-            df = df["Close"] if "Close" in df.columns.get_level_values(0) else df
-        elif "Close" in df.columns:
-            df = df["Close"]
-
-        df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
-        df = df[["Altin", "Bakir", "Bitcoin"]].ffill().bfill().dropna()
-        if len(df) < 52:
-            return
-
-        df["Rasyo"] = df["Altin"] / (df["Bakir"] * df["Bitcoin"])
-        df["SMA10"] = df["Rasyo"].rolling(10).mean()
-        df["SMA50"] = df["Rasyo"].rolling(50).mean()
-        df = df.dropna()
-
-        last       = df.iloc[-1]
-        r, s10, s50 = float(last["Rasyo"]), float(last["SMA10"]), float(last["SMA50"])
-        btc_fiyat  = float(last["Bitcoin"])
-        alt_fiyat  = float(last["Altin"])
-
-        kisa_bull  = r < s10
-        makro_bull = r < s50
-
-        if makro_bull and kisa_bull:
-            rejim = "🟢🟢 GÜÇLÜ BOĞA";       btc_p, alt_p = 100, 0
-        elif makro_bull and not kisa_bull:
-            rejim = "🟡🟢 BOĞA + Kısa Düzeltme"; btc_p, alt_p = 50, 50
-        elif not makro_bull and kisa_bull:
-            rejim = "🟠🔴 AYI + Kısa Toparlanma"; btc_p, alt_p = 0, 100
-        else:
-            rejim = "🔴🔴 GÜÇLÜ AYI";        btc_p, alt_p = 0, 100
-
-        # Önceki rejimi dosyadan oku
-        state = {}
-        try:
-            if ALERT_STATE_FILE.exists():
-                state = json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-
-        prev = state.get("rejim", "")
-
-        if prev and prev != rejim:
-            # REJİM DEĞİŞTİ → Telegram'a gönder
-            mesaj = (
-                f"🚨 *REJİM DEĞİŞİMİ ALARMI* 🚨\n\n"
-                f"*{prev}*\n"
-                f"⬇️\n"
-                f"*{rejim}*\n\n"
-                f"🪙 BTC: ${btc_fiyat:,.0f}\n"
-                f"🥇 Altın: ${alt_fiyat:,.0f}\n"
-                f"💼 Yeni Pozisyon: BTC %{btc_p} · Altın %{alt_p}\n\n"
-                f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-            )
-            if TOKEN and CHAT_ID:
-                try:
-                    requests.post(
-                        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                        json={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"},
-                        timeout=10
-                    )
-                except Exception:
-                    pass
-
-        # Yeni rejimi kaydet (tarih damgasıyla)
-        state["rejim"]       = rejim
-        state["son_kontrol"] = datetime.now().isoformat(timespec="seconds")
-        state["btc_fiyat"]   = round(btc_fiyat, 0)
-        state["alt_fiyat"]   = round(alt_fiyat, 0)
-        ALERT_STATE_FILE.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-
-    except Exception:
-        pass   # Sessizce geç — arka plan thread'i asla çökmemeli
-
-
-# ── SCHEDULER BAŞLAT (tek seferlik) ──────────────────────────────────────────
-if SCHEDULER_OK and "scheduler_started" not in st.session_state:
-    _scheduler = BackgroundScheduler(timezone="Europe/Istanbul")
-    _scheduler.add_job(
-        rejim_hesapla_ve_bildir,
-        trigger="interval",
-        minutes=KONTROL_ARALIK,
-        id="rejim_kontrol",
-        replace_existing=True,
-        next_run_time=datetime.now()   # ilk çalışma hemen
-    )
-    _scheduler.start()
-    st.session_state["scheduler_started"] = True
+    if r < s10 and r < s50:
+        return ("Güçlü Boğa",        100, 0,
+                "strong-on",  "🟢🟢 GÜÇLÜ BOĞA",
+                "Her iki sinyal BTC lehine · En güçlü alım bölgesi")
+    elif r < s50:
+        return ("Boğa + Düzeltme",   50, 50,
+                "weak-on",    "🟡🟢 BOĞA + Kısa Düzeltme",
+                "Büyük trend yukarı · Kısa vadede hafif baskı")
+    elif r < s10:
+        return ("Ayı + Toparlanma",  0, 100,
+                "weak-off",   "🟠🔴 AYI + Kısa Toparlanma",
+                "Büyük trend aşağı · Kısa vadede geçici rahatlama")
+    else:
+        return ("Güçlü Ayı",         0, 100,
+                "strong-off", "🔴🔴 GÜÇLÜ AYI",
+                "Her iki sinyal BTC aleyhine · Altın koruma modu")
 
 # ── YARDIMCI FONKSİYONLAR ────────────────────────────────────────────────────
+def fmt_pct(x): return f"%{x:+.1f}"
+def fmt_usd(x): return f"${x:,.0f}"
+
 def load_state():
     try:
-        return json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8")) if ALERT_STATE_FILE.exists() else {}
+        return json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8")) \
+               if ALERT_STATE_FILE.exists() else {}
     except Exception:
         return {}
 
 def save_state(s):
-    ALERT_STATE_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        ALERT_STATE_FILE.write_text(
+            json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 def telegram_gonder(mesaj):
     if not TOKEN or not CHAT_ID:
@@ -188,35 +113,29 @@ def telegram_gonder(mesaj):
         r = requests.post(
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
             json={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"},
-            timeout=10
-        )
+            timeout=10)
         return r.ok
     except Exception:
         return False
-
-def fmt_pct(x):
-    return f"%{x:+.1f}"
-
-def fmt_usd(x):
-    return f"${x:,.0f}"
 
 # ── VERİ ─────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600)
 def verileri_getir():
     symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
     df = yf.download(list(symbols.keys()), period="8y", interval="1d",
-                     auto_adjust=False, progress=False)
+                     auto_adjust=False, multi_level_index=False, progress=False)
     if df.empty:
         return pd.DataFrame()
     if isinstance(df.columns, pd.MultiIndex):
-        df = df["Close"] if "Close" in df.columns.get_level_values(0) else df
+        df = df["Close"].copy() if "Close" in df.columns.get_level_values(0) \
+             else df.set_axis(df.columns.get_level_values(0), axis=1)
     elif "Close" in df.columns:
         df = df["Close"]
     df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
     cols = [c for c in ["Altin", "Bakir", "Bitcoin"] if c in df.columns]
     return df[cols].ffill().bfill()
 
-# ── GEMİNİ API ───────────────────────────────────────────────────────────────
+# ── GEMİNİ ───────────────────────────────────────────────────────────────────
 def gemini_api(prompt):
     if not GEMINI_KEY:
         return None
@@ -235,7 +154,7 @@ def gemini_api(prompt):
     return None
 
 @st.cache_data(ttl=1800)
-def gemini_yorum_cache(btc_r, rejim, rot_k, bh_k, rot_v, bh_v, kisa_bull, makro_bull):
+def gemini_yorum_cache(btc_r, rejim, rot_k, bh_btc_k, bh_alt_k, kisa_bull, makro_bull):
     prompt = f"""
 Sen bir makro piyasa analistisin. Aşağıdaki verilere bakarak sıradan bir yatırımcının
 anlayabileceği sade Türkçe ile 4-6 cümlelik özet yorum yaz. Teknik jargon kullanma.
@@ -245,8 +164,9 @@ Sonunda tek cümleyle "Şu an ne yapmalı?" önerisi ver.
 - Rejim: {rejim}
 - Kısa vade (SMA10): {"Boğa" if kisa_bull else "Ayı"}
 - Uzun vade (SMA50): {"Boğa" if makro_bull else "Ayı"}
-- 8Y Rotasyon kazancı: {fmt_pct(rot_k)} ({fmt_usd(rot_v)})
-- BTC al-tut kıyası: {fmt_pct(bh_k)} ({fmt_usd(bh_v)})
+- 8Y Rotasyon kazancı: {fmt_pct(rot_k)}
+- BTC al-tut kıyası: {fmt_pct(bh_btc_k)}
+- Altın al-tut kıyası: {fmt_pct(bh_alt_k)}
 
 Sadece yorum metni yaz, madde işareti veya başlık ekleme.
 """
@@ -263,76 +183,49 @@ def backtest_rotasyon(df):
     cash = 10000.0
     btc_qty = alt_qty = 0.0
     prev_regime = None
-    trade_rows = []
-    equity = []
-    btc_pct_list = []
-    alt_pct_list = []
-
-    # Performans takip
-    btc_gun = alt_gun = nakit_gun = 0
+    trade_rows, equity, btc_pct_list, alt_pct_list = [], [], [], []
+    btc_gun = alt_gun = 0
     max_port = 10000.0
     max_dd = 0.0
 
     for idx, row in d.iterrows():
         r, s10, s50 = row["Rasyo"], row["SMA10"], row["SMA50"]
-        bp, ap = row["Bitcoin"], row["Altin"]
+        bp, ap = float(row["Bitcoin"]), float(row["Altin"])
 
-        iki_boga  = r < s10 and r < s50
-        karma     = r < s50 and r >= s10
-        # ayi_mod = her şey dışında → altın
-
-        if iki_boga:
-            regime = "Güçlü Boğa"
-            t_btc, t_alt = 100, 0
-        elif karma:
-            regime = "Boğa + Düzeltme"
-            t_btc, t_alt = 50, 50
-        else:
-            regime = "Altın Ağırlık"
-            t_btc, t_alt = 0, 100
+        # ← Tek rejim fonksiyonu — backtest burayı kullanır
+        isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
 
         port_val = cash + btc_qty * bp + alt_qty * ap
-        changed  = (prev_regime is None) or (regime != prev_regime)
+        changed  = (prev_regime is None) or (isim != prev_regime)
 
         if changed:
-            # Rejim geçişinde portföyü yeniden dağıt
-            if regime == "Güçlü Boğa":
-                btc_qty = port_val / bp
-                alt_qty = cash = 0.0
-            elif regime == "Boğa + Düzeltme":
+            if isim == "Güçlü Boğa":
+                btc_qty = port_val / bp; alt_qty = cash = 0.0
+            elif isim == "Boğa + Düzeltme":
                 btc_qty = (port_val * 0.5) / bp
                 alt_qty = (port_val * 0.5) / ap
                 cash = 0.0
             else:
-                alt_qty = port_val / ap
-                btc_qty = cash = 0.0
+                alt_qty = port_val / ap; btc_qty = cash = 0.0
 
             port_after = cash + btc_qty * bp + alt_qty * ap
             trade_rows.append({
-                "Tarih":    pd.to_datetime(idx).strftime("%Y-%m-%d"),
-                "Geçiş":   f"{prev_regime or 'Başlangıç'} → {regime}",
-                "Dağılım":  f"BTC %{t_btc} · Altın %{t_alt}",
-                "Portföy":  round(port_after, 0),
-                "Toplam Getiri": round((port_after / 10000.0 - 1) * 100, 1),
+                "Tarih":   pd.to_datetime(idx).strftime("%Y-%m-%d"),
+                "Geçiş":   f"{prev_regime or 'Başlangıç'} → {isim}",
+                "Rejim":   etiket,
+                "Dağılım": f"BTC %{t_btc} · Altın %{t_alt}",
+                "Portföy": round(port_after, 0),
+                "Getiri":  round((port_after / 10000.0 - 1) * 100, 1),
             })
-            prev_regime = regime
+            prev_regime = isim
 
-        port_now = cash + btc_qty * bp + alt_qty * ap
+        port_now  = cash + btc_qty * bp + alt_qty * ap
+        max_port  = max(max_port, port_now)
+        dd        = (port_now - max_port) / max_port * 100
+        max_dd    = min(max_dd, dd)
 
-        # Drawdown
-        if port_now > max_port:
-            max_port = port_now
-        dd = (port_now - max_port) / max_port * 100
-        if dd < max_dd:
-            max_dd = dd
-
-        # Gün sayacı
-        if t_btc == 100:
-            btc_gun += 1
-        elif t_alt == 100:
-            alt_gun += 1
-        else:
-            nakit_gun += 1
+        if t_btc == 100: btc_gun += 1
+        if t_alt == 100: alt_gun += 1
 
         equity.append(port_now)
         btc_pct_list.append(t_btc)
@@ -351,7 +244,78 @@ def backtest_rotasyon(df):
     }
     return d, pd.DataFrame(trade_rows), stats
 
-# ── ANA UYGULAMA ──────────────────────────────────────────────────────────────
+# ── 7/24 ARKA PLAN SCHEDULER ─────────────────────────────────────────────────
+def rejim_kontrol_ve_bildir():
+    """
+    APScheduler tarafından her KONTROL_ARALIK dakikada çağrılır.
+    Sayfa kapalı olsa bile çalışır — rejim değişince Telegram alarmı gönderir.
+    rejim_tespit() kullandığı için UI ile %100 tutarlı.
+    """
+    try:
+        symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
+        df = yf.download(list(symbols.keys()), period="60d", interval="1d",
+                         auto_adjust=False, progress=False)
+        if df.empty: return
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df = df["Close"] if "Close" in df.columns.get_level_values(0) else df
+        elif "Close" in df.columns:
+            df = df["Close"]
+
+        df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
+        df = df[["Altin","Bakir","Bitcoin"]].ffill().bfill().dropna()
+        if len(df) < 52: return
+
+        df["Rasyo"] = df["Altin"] / (df["Bakir"] * df["Bitcoin"])
+        df["SMA10"] = df["Rasyo"].rolling(10).mean()
+        df["SMA50"] = df["Rasyo"].rolling(50).mean()
+        df = df.dropna()
+
+        last = df.iloc[-1]
+        r, s10, s50  = float(last["Rasyo"]), float(last["SMA10"]), float(last["SMA50"])
+        btc_fiyat    = float(last["Bitcoin"])
+        alt_fiyat    = float(last["Altin"])
+
+        # ← Aynı rejim_tespit() — UI ile birebir aynı karar
+        isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
+
+        state = load_state()
+        prev  = state.get("rejim", "")
+
+        if prev and prev != etiket:
+            mesaj = (
+                f"🚨 *REJİM DEĞİŞİMİ ALARMI* 🚨\n\n"
+                f"*{prev}*\n⬇️\n*{etiket}*\n\n"
+                f"🪙 BTC: {fmt_usd(btc_fiyat)}\n"
+                f"🥇 Altın: {fmt_usd(alt_fiyat)}\n"
+                f"💼 Yeni Pozisyon: BTC %{t_btc} · Altın %{t_alt}\n\n"
+                f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+            )
+            telegram_gonder(mesaj)
+
+        state.update({
+            "rejim":       etiket,
+            "son_kontrol": datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "btc_fiyat":   round(btc_fiyat, 0),
+            "alt_fiyat":   round(alt_fiyat, 0),
+        })
+        save_state(state)
+
+    except Exception:
+        pass  # Arka plan thread asla çökmemeli
+
+# Scheduler — Streamlit her worker'da bir kez başlatılır
+if SCHEDULER_OK and "scheduler_started" not in st.session_state:
+    _sch = BackgroundScheduler(timezone="Europe/Istanbul")
+    _sch.add_job(rejim_kontrol_ve_bildir, "interval",
+                 minutes=KONTROL_ARALIK, id="rejim_kontrol",
+                 replace_existing=True, next_run_time=datetime.now())
+    _sch.start()
+    st.session_state["scheduler_started"] = True
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ANA UYGULAMA
+# ══════════════════════════════════════════════════════════════════════════════
 try:
     raw = verileri_getir()
     if raw.empty or len(raw) < 60:
@@ -369,49 +333,31 @@ try:
     kisa_bull  = son_rasyo < sma10
     makro_bull = son_rasyo < sma50
 
-    # Rejim
-    if makro_bull and kisa_bull:
-        rejim_kodu, rejim_etiketi = "strong-on",  "🟢🟢 GÜÇLÜ BOĞA"
-        rejim_aciklama = "Her iki sinyal BTC lehine · En güçlü alım bölgesi"
-        btc_pct_now, alt_pct_now = 100, 0
-    elif makro_bull and not kisa_bull:
-        rejim_kodu, rejim_etiketi = "weak-on",   "🟡🟢 BOĞA + Kısa Düzeltme"
-        rejim_aciklama = "Büyük trend yukarı · Kısa vadede hafif baskı"
-        btc_pct_now, alt_pct_now = 50, 50
-    elif not makro_bull and kisa_bull:
-        rejim_kodu, rejim_etiketi = "weak-off",  "🟠🔴 AYI + Kısa Toparlanma"
-        rejim_aciklama = "Büyük trend aşağı · Kısa vadede geçici rahatlama"
-        btc_pct_now, alt_pct_now = 0, 100
-    else:
-        rejim_kodu, rejim_etiketi = "strong-off", "🔴🔴 GÜÇLÜ AYI"
-        rejim_aciklama = "Her iki sinyal BTC aleyhine · Altın koruma modu"
-        btc_pct_now, alt_pct_now = 0, 100
+    # ← Tek rejim_tespit() çağrısı — UI için
+    isim_now, btc_pct_now, alt_pct_now, rejim_kodu, rejim_etiketi, rejim_aciklama = \
+        rejim_tespit(son_rasyo, sma10, sma50)
 
     # Kıyaslamalar
-    bh_btc_qty  = 10000.0 / float(data["Bitcoin"].iloc[0])
-    bh_alt_qty  = 10000.0 / float(data["Altin"].iloc[0])
-    data["BH_BTC"]  = bh_btc_qty * data["Bitcoin"]
-    data["BH_Altin"] = bh_alt_qty * data["Altin"]
+    data["BH_BTC"]   = (10000.0 / float(data["Bitcoin"].iloc[0])) * data["Bitcoin"]
+    data["BH_Altin"] = (10000.0 / float(data["Altin"].iloc[0]))   * data["Altin"]
 
-    rot_son     = float(data["Portfoy"].iloc[-1])
-    rot_kazanc  = (rot_son / 10000.0 - 1) * 100
-    bh_btc_son  = float(data["BH_BTC"].iloc[-1])
-    bh_btc_k    = (bh_btc_son / 10000.0 - 1) * 100
-    bh_alt_son  = float(data["BH_Altin"].iloc[-1])
-    bh_alt_k    = (bh_alt_son / 10000.0 - 1) * 100
+    rot_son    = float(data["Portfoy"].iloc[-1])
+    rot_kazanc = (rot_son    / 10000.0 - 1) * 100
+    bh_btc_son = float(data["BH_BTC"].iloc[-1])
+    bh_btc_k   = (bh_btc_son / 10000.0 - 1) * 100
+    bh_alt_son = float(data["BH_Altin"].iloc[-1])
+    bh_alt_k   = (bh_alt_son / 10000.0 - 1) * 100
 
-    prev_btc    = float(data["Bitcoin"].iloc[-2])
-    prev_alt    = float(data["Altin"].iloc[-2])
-    btc_degisim = (btc_fiyat / prev_btc - 1) * 100
-    alt_degisim = (alt_fiyat / prev_alt - 1) * 100
+    btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100
+    alt_degisim = (alt_fiyat / float(data["Altin"].iloc[-2])   - 1) * 100
 
     # ── 1. METRİK KARTLARI ──────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Bitcoin", fmt_usd(btc_fiyat),  fmt_pct(btc_degisim) + " son gün")
-    c2.metric("Altın",   fmt_usd(alt_fiyat),  fmt_pct(alt_degisim) + " son gün")
-    c3.metric("8Y Rotasyon",    fmt_usd(rot_son),    fmt_pct(rot_kazanc))
-    c4.metric("BTC Al-Tut",     fmt_usd(bh_btc_son), fmt_pct(bh_btc_k))
-    c5.metric("Altın Al-Tut",   fmt_usd(bh_alt_son), fmt_pct(bh_alt_k))
+    c1.metric("Bitcoin",      fmt_usd(btc_fiyat),  fmt_pct(btc_degisim) + " son gün")
+    c2.metric("Altın",        fmt_usd(alt_fiyat),  fmt_pct(alt_degisim) + " son gün")
+    c3.metric("8Y Rotasyon",  fmt_usd(rot_son),    fmt_pct(rot_kazanc))
+    c4.metric("BTC Al-Tut",   fmt_usd(bh_btc_son), fmt_pct(bh_btc_k))
+    c5.metric("Altın Al-Tut", fmt_usd(bh_alt_son), fmt_pct(bh_alt_k))
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
@@ -421,67 +367,72 @@ try:
     <span>{rejim_etiketi}</span>
     <span style="font-weight:400; font-size:12px; color:#7C8595">{rejim_aciklama}</span>
     <span style="margin-left:auto; font-size:13px;">
-        Şu an pozisyon: &nbsp;
-        <b style="color:#F0B90B">BTC %{btc_pct_now}</b>
+        Şu an: <b style="color:#F0B90B">BTC %{btc_pct_now}</b>
         &nbsp;·&nbsp;
         <b style="color:#E5C07B">Altın %{alt_pct_now}</b>
     </span>
-</div>
-""", unsafe_allow_html=True)
+</div>""", unsafe_allow_html=True)
 
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
-    # Özet satırı
     fark = rot_son - bh_btc_son
     if fark >= 0:
-        st.success(f"Rotasyon stratejisi BTC al-tutun **{fmt_usd(fark)}** önünde  ·  "
-                   f"Rotasyon {fmt_pct(rot_kazanc)}  vs  BTC al-tut {fmt_pct(bh_btc_k)}  vs  Altın al-tut {fmt_pct(bh_alt_k)}")
+        st.success(f"Rotasyon BTC al-tutun **{fmt_usd(fark)}** önünde  ·  "
+                   f"Rotasyon {fmt_pct(rot_kazanc)}  vs  "
+                   f"BTC al-tut {fmt_pct(bh_btc_k)}  vs  "
+                   f"Altın al-tut {fmt_pct(bh_alt_k)}")
     else:
-        st.warning(f"Rotasyon stratejisi BTC al-tutun **{fmt_usd(abs(fark))}** gerisinde  ·  "
-                   f"Rotasyon {fmt_pct(rot_kazanc)}  vs  BTC al-tut {fmt_pct(bh_btc_k)}  vs  Altın al-tut {fmt_pct(bh_alt_k)}")
+        st.warning(f"Rotasyon BTC al-tutun **{fmt_usd(abs(fark))}** gerisinde  ·  "
+                   f"Rotasyon {fmt_pct(rot_kazanc)}  vs  "
+                   f"BTC al-tut {fmt_pct(bh_btc_k)}  vs  "
+                   f"Altın al-tut {fmt_pct(bh_alt_k)}")
 
     # ── 3. PERFORMANS İSTATİSTİKLERİ ────────────────────────────────────────
-    st.markdown('<div class="lk-section">Strateji Performans İstatistikleri</div>', unsafe_allow_html=True)
-
+    st.markdown('<div class="lk-section">Strateji Performans İstatistikleri</div>',
+                unsafe_allow_html=True)
     s1, s2, s3, s4, s5 = st.columns(5)
-    s1.metric("Toplam İşlem",        str(stats["islem_sayisi"]),  "rejim geçişi")
+    s1.metric("Toplam İşlem",        str(stats["islem_sayisi"]), "rejim geçişi")
     s2.metric("BTC'de Geçen Süre",   f"{stats['btc_gun']} gün",
-              fmt_pct(stats['btc_gun'] / stats['toplam_gun'] * 100) + " toplam")
+              fmt_pct(stats['btc_gun'] / stats['toplam_gun'] * 100))
     s3.metric("Altın'da Geçen Süre", f"{stats['alt_gun']} gün",
-              fmt_pct(stats['alt_gun'] / stats['toplam_gun'] * 100) + " toplam")
-    s4.metric("Maks. Drawdown",      fmt_pct(stats["max_dd"]), "en derin düşüş")
-    s5.metric("Rotasyon Avantajı",   fmt_usd(rot_son - bh_btc_son),
-              "BTC al-tuta göre fark")
+              fmt_pct(stats['alt_gun'] / stats['toplam_gun'] * 100))
+    s4.metric("Maks. Drawdown",      fmt_pct(stats["max_dd"]))
+    s5.metric("Rotasyon Avantajı",   fmt_usd(rot_son - bh_btc_son))
 
     # ── 4. LİKİDİTE RASYO GRAFİĞİ ──────────────────────────────────────────
-    st.markdown('<div class="lk-section">Likidite Rasyosu · SMA10 · SMA50 · BTC Fiyatı</div>', unsafe_allow_html=True)
+    st.markdown('<div class="lk-section">Likidite Rasyosu · SMA10 · SMA50 · BTC Fiyatı</div>',
+                unsafe_allow_html=True)
 
     fig1 = go.Figure()
     fig1.add_trace(go.Scatter(x=data.index, y=data["Rasyo"],
         name="Rasyo", line=dict(color="#7C8595", width=1.0), opacity=0.7))
 
-    # SMA10 renk değişen
-    data["Renk10"] = (data["Rasyo"] < data["SMA10"]).map({True: "#4ADE80", False: "#F87171"})
+    # Renk değişen SMA10
+    data["Renk10"] = (data["Rasyo"] < data["SMA10"]).map({True:"#4ADE80", False:"#F87171"})
     for _, grp in data.groupby((data["Renk10"] != data["Renk10"].shift()).cumsum()):
         fig1.add_trace(go.Scatter(x=grp.index, y=grp["SMA10"], mode="lines",
-            line=dict(color=grp["Renk10"].iloc[0], width=1.5, dash="dot"), showlegend=False))
+            line=dict(color=grp["Renk10"].iloc[0], width=1.5, dash="dot"),
+            showlegend=False))
 
-    # SMA50 renk değişen
-    data["Renk50"] = (data["Rasyo"] < data["SMA50"]).map({True: "#4ADE80", False: "#F87171"})
+    # Renk değişen SMA50
+    data["Renk50"] = (data["Rasyo"] < data["SMA50"]).map({True:"#4ADE80", False:"#F87171"})
     for _, grp in data.groupby((data["Renk50"] != data["Renk50"].shift()).cumsum()):
         fig1.add_trace(go.Scatter(x=grp.index, y=grp["SMA50"], mode="lines",
-            line=dict(color=grp["Renk50"].iloc[0], width=2.5), showlegend=False))
+            line=dict(color=grp["Renk50"].iloc[0], width=2.5),
+            showlegend=False))
 
     fig1.add_trace(go.Scatter(x=data.index, y=data["Bitcoin"],
-        name="BTC Fiyatı", line=dict(color="#F0B90B", width=1.2, dash="dot"), yaxis="y2"))
+        name="BTC Fiyatı", line=dict(color="#F0B90B", width=1.2, dash="dot"),
+        yaxis="y2"))
 
-    # Legend proxy
-    for label, color, dash in [("SMA50 Boğa","#4ADE80","solid"),("SMA50 Ayı","#F87171","solid"),
-                                ("SMA10 Boğa","#4ADE80","dot"),  ("SMA10 Ayı","#F87171","dot")]:
-        fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines", name=label,
-            line=dict(color=color, dash=dash, width=2)))
+    # Legend proxy'ler
+    for lbl, col, dsh in [("SMA50 Boğa","#4ADE80","solid"),("SMA50 Ayı","#F87171","solid"),
+                           ("SMA10 Boğa","#4ADE80","dot"),  ("SMA10 Ayı","#F87171","dot")]:
+        fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines", name=lbl,
+            line=dict(color=col, dash=dsh, width=2)))
 
-    fig1.update_layout(height=540, template="plotly_dark",
+    fig1.update_layout(
+        height=540, template="plotly_dark",
         paper_bgcolor="#0B0E14", plot_bgcolor="#0B0E14",
         font=dict(family="Inter", color="#E6E9EF"),
         margin=dict(l=10, r=10, t=10, b=10),
@@ -491,11 +442,13 @@ try:
         yaxis2=dict(title="BTC (USD)", overlaying="y", side="right",
                     title_font=dict(color="#F0B90B"), tickfont=dict(color="#F0B90B"),
                     gridcolor="rgba(0,0,0,0)"),
-        legend=dict(orientation="h", y=1.04, x=1, xanchor="right", bgcolor="rgba(0,0,0,0)"))
+        legend=dict(orientation="h", y=1.04, x=1, xanchor="right",
+                    bgcolor="rgba(0,0,0,0)"))
     st.plotly_chart(fig1, use_container_width=True)
 
-    # ── 5. PORTFÖY KARŞILAŞTIRMA GRAFİĞİ ───────────────────────────────────
-    st.markdown('<div class="lk-section">Portföy Karşılaştırma · Rotasyon vs BTC Al-Tut vs Altın Al-Tut</div>', unsafe_allow_html=True)
+    # ── 5. PORTFÖY KARŞILAŞTIRMA ────────────────────────────────────────────
+    st.markdown('<div class="lk-section">Portföy Karşılaştırma · Rotasyon vs BTC Al-Tut vs Altın Al-Tut</div>',
+                unsafe_allow_html=True)
 
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(x=data.index, y=data["Portfoy"],
@@ -504,18 +457,21 @@ try:
         name="BTC Al-Tut", line=dict(color="#F0B90B", width=1.5, dash="dot")))
     fig2.add_trace(go.Scatter(x=data.index, y=data["BH_Altin"],
         name="Altın Al-Tut", line=dict(color="#E5C07B", width=1.5, dash="dash")))
-    fig2.update_layout(height=360, template="plotly_dark",
+    fig2.update_layout(
+        height=360, template="plotly_dark",
         paper_bgcolor="#0B0E14", plot_bgcolor="#0B0E14",
         font=dict(family="Inter", color="#E6E9EF"),
         margin=dict(l=10, r=10, t=10, b=10),
         xaxis=dict(gridcolor="#1E2430"),
         yaxis=dict(title="Portföy Değeri (USD)", gridcolor="#1E2430",
                    title_font=dict(color="#7C8595"), tickfont=dict(color="#7C8595")),
-        legend=dict(orientation="h", y=1.04, x=1, xanchor="right", bgcolor="rgba(0,0,0,0)"))
+        legend=dict(orientation="h", y=1.04, x=1, xanchor="right",
+                    bgcolor="rgba(0,0,0,0)"))
     st.plotly_chart(fig2, use_container_width=True)
 
-    # ── 6. POZİSYON DAĞILIM GRAFİĞİ ────────────────────────────────────────
-    st.markdown('<div class="lk-section">Portföy Dağılımı · BTC vs Altın Ağırlığı</div>', unsafe_allow_html=True)
+    # ── 6. POZİSYON DAĞILIMI ────────────────────────────────────────────────
+    st.markdown('<div class="lk-section">Portföy Dağılımı · BTC vs Altın Ağırlığı</div>',
+                unsafe_allow_html=True)
 
     fig3 = go.Figure()
     fig3.add_trace(go.Scatter(x=data.index, y=data["BtcPct"],
@@ -524,68 +480,69 @@ try:
     fig3.add_trace(go.Scatter(x=data.index, y=data["AltinPct"],
         name="Altın %", line=dict(color="#E5C07B", width=1.2),
         fill="tozeroy", fillcolor="rgba(229,192,123,0.08)"))
-    fig3.update_layout(height=200, template="plotly_dark",
+    fig3.update_layout(
+        height=200, template="plotly_dark",
         paper_bgcolor="#0B0E14", plot_bgcolor="#0B0E14",
         font=dict(family="Inter", color="#E6E9EF"),
         margin=dict(l=10, r=10, t=10, b=10),
         xaxis=dict(gridcolor="#1E2430"),
-        yaxis=dict(title="%", gridcolor="#1E2430", range=[0, 110],
+        yaxis=dict(title="%", gridcolor="#1E2430", range=[0,110],
                    title_font=dict(color="#7C8595"), tickfont=dict(color="#7C8595")),
-        legend=dict(orientation="h", y=1.08, x=1, xanchor="right", bgcolor="rgba(0,0,0,0)"))
+        legend=dict(orientation="h", y=1.08, x=1, xanchor="right",
+                    bgcolor="rgba(0,0,0,0)"))
     st.plotly_chart(fig3, use_container_width=True)
 
-    # ── 7. İŞLEM GÜNLÜĞÜ (renkli) ───────────────────────────────────────────
-    st.markdown('<div class="lk-section">8 Yıllık İşlem Günlüğü</div>', unsafe_allow_html=True)
+    # ── 7. İŞLEM GÜNLÜĞÜ ────────────────────────────────────────────────────
+    st.markdown('<div class="lk-section">8 Yıllık İşlem Günlüğü</div>',
+                unsafe_allow_html=True)
 
     def renk_satir(row):
-        gecis = str(row.get("Geçiş", ""))
-        if "Güçlü Boğa" in gecis and "→ Güçlü Boğa" in gecis:
-            return ["background-color: rgba(34,197,94,0.12)"] * len(row)
-        elif "Altın" in gecis and "→ Altın" in gecis:
-            return ["background-color: rgba(239,68,68,0.10)"] * len(row)
-        elif "→ Boğa + Düzeltme" in gecis:
-            return ["background-color: rgba(234,179,8,0.10)"] * len(row)
+        g = str(row.get("Geçiş",""))
+        if "Güçlü Boğa" in g and "→ Güçlü Boğa" in g:
+            return ["background-color:rgba(34,197,94,0.12)"] * len(row)
+        elif "→ Boğa + Düzeltme" in g:
+            return ["background-color:rgba(234,179,8,0.10)"] * len(row)
+        elif "Altın" in g or "Ayı" in g:
+            return ["background-color:rgba(239,68,68,0.10)"] * len(row)
         return [""] * len(row)
 
-    styled = trade_log.style.apply(renk_satir, axis=1)
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(trade_log.style.apply(renk_satir, axis=1),
+                 use_container_width=True, hide_index=True)
 
     # ── 8. OTOMATİK ALARM DURUMU ────────────────────────────────────────────
+    st.markdown('<div class="lk-section">Otomatik Alarm Sistemi · 7/24</div>',
+                unsafe_allow_html=True)
+
     state = load_state()
-    son_kontrol = state.get("son_kontrol", "Henüz çalışmadı")
-    prev_rejim_kayit = state.get("rejim", "")
-
-    st.markdown('<div class="lk-section">Otomatik Alarm Sistemi</div>', unsafe_allow_html=True)
-
     a1, a2, a3 = st.columns(3)
-    a1.metric("Kontrol Sıklığı",   f"Her {KONTROL_ARALIK} dakika",
-              "7/24 aktif" if SCHEDULER_OK else "APScheduler kurulu değil")
+    a1.metric("Kontrol Sıklığı",
+              f"Her {KONTROL_ARALIK} dakika",
+              "✅ Aktif" if SCHEDULER_OK else "⚠️ APScheduler eksik")
     a2.metric("Son Kontrol",
-              son_kontrol[11:16] if len(son_kontrol) > 10 else "—",
-              son_kontrol[:10] if len(son_kontrol) > 10 else "Bekleniyor")
-    a3.metric("İzlenen Rejim",     prev_rejim_kayit or "—",
-              "Değişince Telegram alarm")
+              state.get("son_kontrol", "Bekleniyor"),
+              f"BTC {fmt_usd(state['btc_fiyat'])}" if "btc_fiyat" in state else "")
+    a3.metric("İzlenen Rejim",
+              state.get("rejim", "—"),
+              "Değişince Telegram alarmı")
 
     if not SCHEDULER_OK:
-        st.warning("APScheduler kurulu değil. `pip install apscheduler` komutunu `requirements.txt`'e ekleyin.")
+        st.warning("APScheduler kurulu değil — `requirements.txt`'e `apscheduler>=3.10.4` ekleyin.")
 
-    # ── 9. YAPAY ZEKA YORUMU ─────────────────────────────────────────────────
-    st.markdown('<div class="lk-section">Yapay Zeka Piyasa Yorumu</div>', unsafe_allow_html=True)
+    # ── 9. YAPAY ZEKA YORUMU ────────────────────────────────────────────────
+    st.markdown('<div class="lk-section">Yapay Zeka Piyasa Yorumu</div>',
+                unsafe_allow_html=True)
 
     if GEMINI_KEY:
         with st.spinner("Piyasa verileri yorumlanıyor..."):
             yorum = gemini_yorum_cache(
                 round(btc_fiyat / 500) * 500,
-                rejim_etiketi, rot_kazanc, bh_btc_k,
-                rot_son, bh_btc_son, kisa_bull, makro_bull
-            )
+                rejim_etiketi, rot_kazanc, bh_btc_k, bh_alt_k,
+                kisa_bull, makro_bull)
         st.markdown(f'<div class="lk-ai-box">{yorum or "Yorum alınamadı."}</div>',
                     unsafe_allow_html=True)
     else:
         st.info("Otomatik yorum için `GEMINI_API_KEY` ekleyin — Ücretsiz: aistudio.google.com")
 
-    # Soru kutusu
-    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
     soru = st.text_input("", placeholder="Aklınıza takılan bir şey mi var? Sorun...",
                          label_visibility="collapsed")
     if soru and GEMINI_KEY:
@@ -595,14 +552,14 @@ Sen bir piyasa analisti danışmanısın. Şu anki durum:
 BTC: {fmt_usd(btc_fiyat)} | Altın: {fmt_usd(alt_fiyat)} | Rejim: {rejim_etiketi}
 Kısa vade: {"Boğa" if kisa_bull else "Ayı"} | Uzun vade: {"Boğa" if makro_bull else "Ayı"}
 Rotasyon 8Y: {fmt_pct(rot_kazanc)} | BTC al-tut: {fmt_pct(bh_btc_k)} | Altın al-tut: {fmt_pct(bh_alt_k)}
-
 Sıradan bir yatırımcıya sade Türkçe, kısa ve net yanıt ver.
 Soru: {soru}
 """)
             if yanit:
-                st.markdown(f'<div class="lk-ai-box">{yanit}</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="lk-ai-box">{yanit}</div>',
+                            unsafe_allow_html=True)
 
-    # ── 10. MANUEL TELEGRAM BUTONU ───────────────────────────────────────────
+    # ── 10. MANUEL TELEGRAM ──────────────────────────────────────────────────
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     if st.button("📲 Güncel Durumu Telegram'a Gönder"):
         rapor = (
@@ -613,8 +570,8 @@ Soru: {soru}
             f"  • Kısa Vade: {'🟢 Boğa' if kisa_bull else '🔴 Ayı'}\n"
             f"  • Uzun Vade: {'🟢 Boğa' if makro_bull else '🔴 Ayı'}\n\n"
             f"💼 Pozisyon: BTC %{btc_pct_now} · Altın %{alt_pct_now}\n\n"
-            f"📈 8Y Rotasyon: {fmt_usd(rot_son)} ({fmt_pct(rot_kazanc)})\n"
-            f"₿  BTC Al-Tut: {fmt_usd(bh_btc_son)} ({fmt_pct(bh_btc_k)})\n"
+            f"📈 8Y Rotasyon:  {fmt_usd(rot_son)} ({fmt_pct(rot_kazanc)})\n"
+            f"₿  BTC Al-Tut:  {fmt_usd(bh_btc_son)} ({fmt_pct(bh_btc_k)})\n"
             f"🥇 Altın Al-Tut: {fmt_usd(bh_alt_son)} ({fmt_pct(bh_alt_k)})\n\n"
             f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         )
