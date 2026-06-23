@@ -63,18 +63,16 @@ div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; fon
 # ── BAŞLIK ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="lk-header">
-    <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD · Likidite Kompoziti · 8 Yıllık Analiz</div>
+    <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD · Likidite Kompoziti · Adım Adım Geliştirme</div>
     <p class="lk-title">Süper Kompozit Likidite Paneli</p>
-    <p class="lk-subtitle">Altın · Bakır · Bitcoin rasyosu üzerinden küresel likidite yönünü ve fırsatları takip et</p>
+    <p class="lk-subtitle">Adım 1: Canlı Makro Verilerle Güçlendirilmiş Yapay Zeka Entegrasyonu</p>
 </div>
 """, unsafe_allow_html=True)
 
-# ── SECRETS / ENV CONFIG ──────────────────────────────────────────────────────
 GEMINI_KEY = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
 TOKEN = str(st.secrets.get("TELEGRAM_TOKEN", "")).strip()
 CHAT_ID = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
 
-# ── REJİM FONKSİYONU ──────────────────────────────────────────────────────────
 def rejim_tespit(r, s10, s50):
     if r < s10 and r < s50:
         return ("Güçlü Boğa", 100, 0, "strong-on", "🟢 GÜÇLÜ BOĞA", "Her iki sinyal BTC lehine · En güçlü alım bölgesi")
@@ -89,8 +87,7 @@ def fmt_pct(x): return f"%{x:+.1f}"
 def fmt_usd(x): return f"${x:,.0f}"
 
 def load_state():
-    try:
-        return json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8")) if ALERT_STATE_FILE.exists() else {}
+    try: return json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8")) if ALERT_STATE_FILE.exists() else {}
     except Exception: return {}
 
 def save_state(s):
@@ -117,7 +114,6 @@ def verileri_getir():
     cols = [c for c in ["Altin", "Bakir", "Bitcoin"] if c in df.columns]
     return df[cols].ffill().bfill()
 
-# ── GÜNDE BİR KERE ARKA PLAN KONTROLÜ (SAAT 10:00) ───────────────────────────
 def günlük_rejim_kontrol_ve_bildir():
     try:
         symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
@@ -146,18 +142,14 @@ def günlük_rejim_kontrol_ve_bildir():
                 f"💼 İdeal Dağılım: BTC %{t_btc} · Altın %{t_alt}\n\n"
                 f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
             )
-            if telegram_gonder(mesaj):
-                state["son_rapor_tarihi"] = bugun_str
+            if telegram_gonder(mesaj): state["son_rapor_tarihi"] = bugun_str
         
         state.update({
-            "rejim": etiket,
-            "son_kontrol": datetime.now().strftime("%d.%m.%Y %H:%M"),
-            "btc_fiyat": round(float(last["Bitcoin"]), 0),
-            "alt_fiyat": round(float(last["Altin"]), 0),
+            "rejim": etiket, "son_kontrol": datetime.now().strftime("%d.%m.%Y %H:%M"),
+            "btc_fiyat": round(float(last["Bitcoin"]), 0), "alt_fiyat": round(float(last["Altin"]), 0),
         })
         save_state(state)
-    except Exception:
-        pass
+    except Exception: pass
 
 if SCHEDULER_OK and "scheduler_started" not in st.session_state:
     _sch = BackgroundScheduler(timezone="Europe/Istanbul")
@@ -165,7 +157,6 @@ if SCHEDULER_OK and "scheduler_started" not in st.session_state:
     _sch.start()
     st.session_state["scheduler_started"] = True
 
-# ── BACKTEST VE HESAPLAMALAR ──────────────────────────────────────────────────
 def backtest_rotasyon(df):
     d = df.copy()
     d["Rasyo"] = d["Altin"] / (d["Bakir"] * d["Bitcoin"])
@@ -187,21 +178,17 @@ def backtest_rotasyon(df):
         changed = (prev_regime is None) or (isim != prev_regime)
         if changed:
             if isim == "Güçlü Boğa":
-                btc_qty = port_val / bp; alt_qty = cash = 0.0
+                btc_qty = port_val / bp; cash = alt_qty = 0.0
             elif isim == "Boğa + Düzeltme":
-                btc_qty = (port_val * 0.5) / bp
-                alt_qty = (port_val * 0.5) / ap
-                cash = 0.0
+                btc_qty = (port_val * 0.5) / bp; alt_qty = (port_val * 0.5) / ap; cash = 0.0
             else:
                 alt_qty = port_val / ap; btc_qty = cash = 0.0
             port_after = cash + btc_qty * bp + alt_qty * ap
             trade_rows.append({
                 "Tarih": pd.to_datetime(idx).strftime("%Y-%m-%d"),
                 "Geçiş": f"{prev_regime or 'Başlangıç'} → {isim}",
-                "Rejim": etiket,
-                "Dağılım": f"BTC %{t_btc} · Altın %{t_alt}",
-                "Portföy": round(port_after, 0),
-                "Getiri": round((port_after / 10000.0 - 1) * 100, 1),
+                "Rejim": etiket, "Dağılım": f"BTC %{t_btc} · Altın %{t_alt}",
+                "Portföy": round(port_after, 0), "Getiri": round((port_after / 10000.0 - 1) * 100, 1),
             })
             prev_regime = isim
         port_now = cash + btc_qty * bp + alt_qty * ap
@@ -219,9 +206,9 @@ def backtest_rotasyon(df):
     stats = {"islem_sayisi": len(trade_rows), "btc_gun": btc_gun, "alt_gun": alt_gun, "max_dd": round(max_dd, 1), "toplam_gun": len(d)}
     return d, pd.DataFrame(trade_rows), stats
 
-# ── MODERN GOOGLE-GENAI SDK ENTEGRASYONU ──────────────────────────────────────
-@st.cache_data(ttl=3600)
-def gemini_api_yorum_uret(rejim_adi):
+# ── ADIM 1: VERİ ENJEKSİYONLU YENİ GEMINI ANALİZ MOTORU ───────────────────────
+@st.cache_data(ttl=1800) # Canlı fiyat takibi için süreyi 30 dakikaya düşürdük
+def gemini_api_yorum_uret_pro(rejim_adi, btc, alt, rasyo, s10, s50, dagilim_info):
     if not GEMINI_KEY:
         return "Gemini API anahtarı ayarlanmamış. Analiz üretilemiyor."
     
@@ -229,25 +216,35 @@ def gemini_api_yorum_uret(rejim_adi):
         from google import genai
         client = genai.Client(api_key=GEMINI_KEY)
         
+        # Matematiksel sapmaları hesaplayıp modele hazır bilgi sunuyoruz
+        sapma_sma10 = ((rasyo / s10) - 1) * 100
+        sapma_sma50 = ((rasyo / s50) - 1) * 100
+        
         prompt = (
-            f"Sen deneyimli bir makro ekonomi ve kripto para analistisin. "
-            f"Küresel likidite rasyolarına göre piyasa şu an şu rejimde: '{rejim_adi}'. "
-            f"Bu durumu teknik jargon kullanmadan, sıradan bir yatırımcının kolayca anlayabileceği bir dille yorumla. "
-            f"Yatırımcının şu an ne yapması gerektiğine, portföyünü nasıl yönetmesi gerektiğine dair net tavsiyeler ver. "
-            f"Cevabın toplamda 4 ile 6 cümle arasında, akıcı ve bilgilendirici olsun."
+            f"Sen profesyonel bir makro hedge fonu yöneticisi ve risk analistisin. Tek bir hedefimiz var: Likidite ne tarafa kayıyorsa o tarafa pozisyon almak.\n\n"
+            f"ŞU ANKİ CANLI PİYASA VERİLERİ:\n"
+            f"- Mevcut Likidite Rejimi: {rejim_adi}\n"
+            f"- İdeal Portföy Dağılım Hedefi: {dagilim_info}\n"
+            f"- Anlık Bitcoin Fiyatı: {fmt_usd(btc)}\n"
+            f"- Anlık Altın Fiyatı: {fmt_usd(alt)}\n"
+            f"- Kompozit Likidite Rasyosu (Altın / (Bakır * BTC)): {rasyo:.6f}\n"
+            f"- 10 Günlük Kısa Vade Eşik (SMA10): {s10:.6f} (Rasyo şu an SMA10'un {sapma_sma10:+.2f}% altında/üstünde)\n"
+            f"- 50 Günlük Makro Eşik (SMA50): {s50:.6f} (Rasyo şu an SMA50'nin {sapma_sma50:+.2f}% altında/üstünde)\n\n"
+            f"TALİMATLAR:\n"
+            f"1. Yukarıdaki nesnel verileri harmanlayarak mevcut likiditenin yönünü (BTC'ye mi, Altın'a mı akıyor?) net bir şekilde yorumla.\n"
+            f"2. Giriş cümlelerinde doğrudan bu anlık rakamlara (fiyatlar ve sapma oranları gibi) atıfta bulunarak analiz yap.\n"
+            f"3. Hedefimizden sapmadan, yatırımcıya net bir konumlanma (pozisyon alma veya koruma) tavsiyesi ver.\n"
+            f"4. Analiz toplamda 4-6 cümle arasında, kurumsal ama anlaşılır bir dilde olsun."
         )
         
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
         )
-        
-        if response.text:
-            return response.text
-            
-    except Exception:
-        pass
-    return "Yapay zeka analiz motoruna şu an erişilemiyor. Lütfen daha sonra tekrar deneyin."
+        if response.text: return response.text
+    except Exception as e:
+        return f"Yapay zeka analiz motoru hatası: {e}"
+    return "Yapay zeka analiz motoruna şu an erişilemiyor."
 
 # ── ANA UYGULAMA GÖRÜNÜMÜ ─────────────────────────────────────────────────────
 try:
@@ -262,9 +259,9 @@ try:
     alt_fiyat = float(last["Altin"])
     son_rasyo = float(last["Rasyo"])
     sma10, sma50 = float(last["SMA10"]), float(last["SMA50"])
-    kisa_bull, makro_bull = son_rasyo < sma10, son_rasyo < sma50
     
     isim_now, btc_pct_now, alt_pct_now, rejim_kodu, rejim_etiketi, rejim_aciklama = rejim_tespit(son_rasyo, sma10, sma50)
+    dagilim_metni = f"BTC %{btc_pct_now} · Altın %{alt_pct_now}"
     
     data["BH_BTC"] = (10000.0 / float(data["Bitcoin"].iloc[0])) * data["Bitcoin"]
     data["BH_Altin"] = (10000.0 / float(data["Altin"].iloc[0])) * data["Altin"]
@@ -275,13 +272,11 @@ try:
     bh_alt_son = float(data["BH_Altin"].iloc[-1])
     bh_alt_k = (bh_alt_son / 10000.0 - 1) * 100
     
-    # ── GÜVENLİ DEĞİŞİM HESAPLAMA (Index Out-Of-Bounds Koruması) ──────────────────
     if len(data) >= 2:
         btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100
         alt_degisim = (alt_fiyat / float(data["Altin"].iloc[-2]) - 1) * 100
     else:
-        btc_degisim = 0.0
-        alt_degisim = 0.0
+        btc_degisim = alt_degisim = 0.0
 
     # Metrik Kartları
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -299,7 +294,7 @@ try:
         <span>{rejim_etiketi}</span>
         <span style="font-weight:400; font-size:12px; color:#64748B">{rejim_aciklama}</span>
         <span style="margin-left:auto; font-size:13px;">
-            Şu an: <b style="color:#B45309">BTC %{btc_pct_now}</b> · <b style="color:#0369A1">Altın %{alt_pct_now}</b>
+            Şu an Hedef: <b style="color:#B45309">BTC %{btc_pct_now}</b> · <b style="color:#0369A1">Altın %{alt_pct_now}</b>
         </span>
     </div>""", unsafe_allow_html=True)
 
@@ -312,7 +307,7 @@ try:
     s4.metric("Maks. Drawdown", fmt_pct(stats["max_dd"]))
     s5.metric("Rotasyon Avantajı", fmt_usd(rot_son - bh_btc_son))
 
-    # Grafik 1: Aydınlık Temalı Likidite Grafiği
+    # Grafik 1: Likidite Grafiği
     st.markdown('<div class="lk-section">Likidite Rasyosu · SMA10 · SMA50 · BTC Fiyatı</div>', unsafe_allow_html=True)
     fig1 = go.Figure()
     fig1.add_trace(go.Scatter(x=data.index, y=data["Rasyo"], name="Rasyo", line=dict(color="#94A3B8", width=1.0), opacity=0.7))
@@ -336,9 +331,9 @@ try:
     )
     st.plotly_chart(fig1, use_container_width=True)
 
-    # Yapay Zeka Yorum Alanı
-    st.markdown('<div class="lk-section">✨ Yapay Zeka Stratejik Piyasa Analizi</div>', unsafe_allow_html=True)
-    ai_yorum = gemini_api_yorum_uret(isim_now)
+    # ── ADIM 1: Geliştirilmiş Canlı Veri Beslemeli Yapay Zeka Yorum Alanı ──
+    st.markdown('<div class="lk-section">✨ Yapay Zeka Stratejik Piyasa Analizi (Canlı Veri Beslemeli)</div>', unsafe_allow_html=True)
+    ai_yorum = gemini_api_yorum_uret_pro(isim_now, btc_fiyat, alt_fiyat, son_rasyo, sma10, sma50, dagilim_metni)
     st.markdown(f'<div class="lk-ai-box">{ai_yorum}</div>', unsafe_allow_html=True)
 
     # Grafik 2: Portföy Karşılaştırma
