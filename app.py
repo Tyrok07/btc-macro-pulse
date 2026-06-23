@@ -150,7 +150,7 @@ def backtest_trades(df):
         btc_px, alt_px = row["Bitcoin"], row["Altin"]
 
         if r < s10 and r < s50:
-            regime = "Güçlü Boğa"
+            regime = "BITCOIN"
             target_btc, target_alt = 100, 0
         elif r < s50 and r >= s10:
             regime = "Boğa + Düzeltme"
@@ -163,7 +163,7 @@ def backtest_trades(df):
         changed = (prev_regime is None) or (regime != prev_regime)
 
         if changed:
-            if regime == "Güçlü Boğa":
+            if regime == "BITCOIN":
                 btc_qty = port_before / btc_px
                 alt_qty = 0.0
                 cash = 0.0
@@ -226,7 +226,7 @@ try:
     makro_bull = son_rasyo < sma50
 
     if makro_bull and kisa_bull:
-        rejim_kodu = "strong_on"; rejim_etiketi = "🟢🟢 GÜÇLÜ BOĞA"; rejim_aciklama = "Her iki sinyal BTC lehine"; status_text = "Güçlü Boğa"; btc_pct_now, alt_pct_now = 100, 0
+        rejim_kodu = "strong_on"; rejim_etiketi = "🟢🟢 BITCOIN"; rejim_aciklama = "Her iki sinyal BTC lehine"; status_text = "BITCOIN"; btc_pct_now, alt_pct_now = 100, 0
     elif makro_bull and not kisa_bull:
         rejim_kodu = "weak_on"; rejim_etiketi = "🟡🟢 BOĞA + Kısa Düzeltme"; rejim_aciklama = "Büyük trend yukarı"; status_text = "Boğa + Düzeltme"; btc_pct_now, alt_pct_now = 50, 50
     elif not makro_bull and kisa_bull:
