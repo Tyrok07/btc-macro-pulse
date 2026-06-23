@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import json
+import time
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
@@ -63,9 +64,9 @@ div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; fon
 # ── BAŞLIK ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="lk-header">
-    <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD · Likidite Kompoziti · Adım Adım Geliştirme</div>
+    <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD · Likidite Kompoziti · Stabilizasyon</div>
     <p class="lk-title">Süper Kompozit Likidite Paneli</p>
-    <p class="lk-subtitle">Adım 1: Canlı Makro Verilerle Güçlendirilmiş Yapay Zeka Entegrasyonu</p>
+    <p class="lk-subtitle">Adım 1: Hataya Dayanıklı (Retry Logic) Canlı Veri Beslemeli Yapay Zeka Entegrasyonu</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -206,44 +207,52 @@ def backtest_rotasyon(df):
     stats = {"islem_sayisi": len(trade_rows), "btc_gun": btc_gun, "alt_gun": alt_gun, "max_dd": round(max_dd, 1), "toplam_gun": len(d)}
     return d, pd.DataFrame(trade_rows), stats
 
-# ── ADIM 1: VERİ ENJEKSİYONLU YENİ GEMINI ANALİZ MOTORU ───────────────────────
-@st.cache_data(ttl=1800) # Canlı fiyat takibi için süreyi 30 dakikaya düşürdük
+# ── ADIM 1: RE-TRY (YENİDEN DENEME) DESTEKLİ GEMINI MOTORU ────────────────────
+@st.cache_data(ttl=1800)
 def gemini_api_yorum_uret_pro(rejim_adi, btc, alt, rasyo, s10, s50, dagilim_info):
     if not GEMINI_KEY:
         return "Gemini API anahtarı ayarlanmamış. Analiz üretilemiyor."
     
-    try:
-        from google import genai
-        client = genai.Client(api_key=GEMINI_KEY)
-        
-        # Matematiksel sapmaları hesaplayıp modele hazır bilgi sunuyoruz
-        sapma_sma10 = ((rasyo / s10) - 1) * 100
-        sapma_sma50 = ((rasyo / s50) - 1) * 100
-        
-        prompt = (
-            f"Sen profesyonel bir makro hedge fonu yöneticisi ve risk analistisin. Tek bir hedefimiz var: Likidite ne tarafa kayıyorsa o tarafa pozisyon almak.\n\n"
-            f"ŞU ANKİ CANLI PİYASA VERİLERİ:\n"
-            f"- Mevcut Likidite Rejimi: {rejim_adi}\n"
-            f"- İdeal Portföy Dağılım Hedefi: {dagilim_info}\n"
-            f"- Anlık Bitcoin Fiyatı: {fmt_usd(btc)}\n"
-            f"- Anlık Altın Fiyatı: {fmt_usd(alt)}\n"
-            f"- Kompozit Likidite Rasyosu (Altın / (Bakır * BTC)): {rasyo:.6f}\n"
-            f"- 10 Günlük Kısa Vade Eşik (SMA10): {s10:.6f} (Rasyo şu an SMA10'un {sapma_sma10:+.2f}% altında/üstünde)\n"
-            f"- 50 Günlük Makro Eşik (SMA50): {s50:.6f} (Rasyo şu an SMA50'nin {sapma_sma50:+.2f}% altında/üstünde)\n\n"
-            f"TALİMATLAR:\n"
-            f"1. Yukarıdaki nesnel verileri harmanlayarak mevcut likiditenin yönünü (BTC'ye mi, Altın'a mı akıyor?) net bir şekilde yorumla.\n"
-            f"2. Giriş cümlelerinde doğrudan bu anlık rakamlara (fiyatlar ve sapma oranları gibi) atıfta bulunarak analiz yap.\n"
-            f"3. Hedefimizden sapmadan, yatırımcıya net bir konumlanma (pozisyon alma veya koruma) tavsiyesi ver.\n"
-            f"4. Analiz toplamda 4-6 cümle arasında, kurumsal ama anlaşılır bir dilde olsun."
-        )
-        
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
-        if response.text: return response.text
-    except Exception as e:
-        return f"Yapay zeka analiz motoru hatası: {e}"
+    sapma_sma10 = ((rasyo / s10) - 1) * 100
+    sapma_sma50 = ((rasyo / s50) - 1) * 100
+    
+    prompt = (
+        f"Sen profesyonel bir makro hedge fonu yöneticisi ve risk analistisin. Tek bir hedefimiz var: Likidite ne tarafa kayıyorsa o tarafa pozisyon almak.\n\n"
+        f"ŞU ANKİ CANLI PİYASA VERİLERİ:\n"
+        f"- Mevcut Likidite Rejimi: {rejim_adi}\n"
+        f"- İdeal Portföy Dağılım Hedefi: {dagilim_info}\n"
+        f"- Anlık Bitcoin Fiyatı: {fmt_usd(btc)}\n"
+        f"- Anlık Altın Fiyatı: {fmt_usd(alt)}\n"
+        f"- Kompozit Likidite Rasyosu (Altın / (Bakır * BTC)): {rasyo:.6f}\n"
+        f"- 10 Günlük Kısa Vade Eşik (SMA10): {s10:.6f} (Rasyo şu an SMA10'un {sapma_sma10:+.2f}% altında/üstünde)\n"
+        f"- 50 Günlük Makro Eşik (SMA50): {s50:.6f} (Rasyo şu an SMA50'nin {sapma_sma50:+.2f}% altında/üstünde)\n\n"
+        f"TALİMATLAR:\n"
+        f"1. Yukarıdaki nesnel verileri harmanlayarak mevcut likiditenin yönünü (BTC'ye mi, Altın'a mı akıyor?) net bir şekilde yorumla.\n"
+        f"2. Giriş cümlelerinde doğrudan bu anlık rakamlara (fiyatlar ve sapma oranları gibi) atıfta bulunarak analiz yap.\n"
+        f"3. Hedefimizden sapmadan, yatırımcıya net bir konumlanma (pozisyon alma veya koruma) tavsiyesi ver.\n"
+        f"4. Analiz toplamda 4-6 cümle arasında, kurumsal ama anlaşılır bir dilde olsun."
+    )
+
+    # 503 Yoğunluk Hatasını Aşmak İçin Yeniden Deneme Döngüsü (Retry Logic)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            from google import genai
+            client = genai.Client(api_key=GEMINI_KEY)
+            
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            if response.text:
+                return response.text
+        except Exception as e:
+            # Eğer son deneme değilse ve hata 503 ise bekleip tekrar dene
+            if attempt < max_retries - 1:
+                time.sleep(2)  # 2 saniye bekle ve döngüyü sürdür
+                continue
+            return f"Yapay zeka analiz motoru şu an yoğun (503). Lütfen sayfayı yenileyip tekrar deneyin. Detay: {e}"
+            
     return "Yapay zeka analiz motoruna şu an erişilemiyor."
 
 # ── ANA UYGULAMA GÖRÜNÜMÜ ─────────────────────────────────────────────────────
