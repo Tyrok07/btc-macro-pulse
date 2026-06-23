@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import requests
 import json
 from pathlib import Path
-from datetime import datetime, date
+from datetime import datetime
 
 st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_icon="◆")
 
@@ -20,7 +20,6 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .stApp { background: #0B0E14; color: #E6E9EF; }
-.lk-shell { max-width: 1600px; margin: 0 auto; }
 .lk-header { padding: 26px 8px 18px 8px; border-bottom: 1px solid #1E2430; margin-bottom: 22px; }
 .lk-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #6FE3B5; margin-bottom: 6px; }
 .lk-title { font-size: 32px; font-weight: 700; color: #F2F4F8; margin: 0; letter-spacing: -0.01em; }
@@ -37,8 +36,6 @@ div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; fon
 .lk-card { background: #0F131C; border: 1px solid #1E2430; border-radius: 16px; padding: 16px 16px 12px 16px; }
 .lk-ai-box { background: #131722; border: 1px solid #1E2430; border-radius: 12px; padding: 20px 22px; line-height: 1.75; font-size: 15px; color: #C8CDD8; }
 .small-note { color: #7C8595; font-size: 12px; }
-.stButton > button { background: #131722; border: 1px solid #2A3140; color: #E6E9EF; border-radius: 8px; font-weight: 500; padding: 8px 18px; }
-.stTextInput input { background: #131722; border: 1px solid #1E2430; color: #E6E9EF; border-radius: 8px; }
 [data-testid="stDataFrame"] { border: 1px solid #1E2430; border-radius: 12px; overflow: hidden; }
 </style>
 """, unsafe_allow_html=True)
@@ -74,25 +71,57 @@ def telegram_gonder(mesaj):
     except Exception:
         return False
 
+def normalize_columns(df):
+    df = df.copy()
+    df.columns = (
+        df.columns.astype(str)
+        .str.strip()
+        .str.replace("İ", "I")
+        .str.replace("ı", "i")
+        .str.replace("ö", "o")
+        .str.replace("Ö", "O")
+        .str.replace("ç", "c")
+        .str.replace("Ç", "C")
+        .str.replace("ş", "s")
+        .str.replace("Ş", "S")
+        .str.replace("ğ", "g")
+        .str.replace("Ğ", "G")
+        .str.replace("ü", "u")
+        .str.replace("Ü", "U")
+        .str.replace(" ", "_")
+    )
+    return df
+
 @st.cache_data(ttl=3600)
 def verileri_getir():
     semboller = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
     df = yf.download(list(semboller.keys()), period="8y", interval="1d", auto_adjust=False, group_by="column", multi_level_index=False, progress=False)
     if df.empty:
         return pd.DataFrame()
+
     if isinstance(df.columns, pd.MultiIndex):
         if "Close" in df.columns.get_level_values(0):
             df = df["Close"].copy()
         else:
             df.columns = df.columns.get_level_values(0)
+
     if "Close" in df.columns:
         close_df = df["Close"].copy()
     else:
         close_df = df.copy()
+
     if isinstance(close_df, pd.Series):
         close_df = close_df.to_frame()
+
     close_df = close_df.rename(columns={c: semboller[c] for c in close_df.columns if c in semboller})
-    return close_df[["Altin", "Bakir", "Bitcoin"]].ffill().bfill()
+    close_df = normalize_columns(close_df)
+
+    required = ["Altin", "Bakir", "Bitcoin"]
+    for c in required:
+        if c not in close_df.columns:
+            raise ValueError(f"Eksik kolon: {c}. Gelen kolonlar: {list(close_df.columns)}")
+
+    return close_df[required].ffill().bfill()
 
 def gemini_api(prompt):
     if not GEMINI_KEY:
@@ -111,7 +140,7 @@ def gemini_api(prompt):
     return None
 
 @st.cache_data(ttl=1800)
-def gemini_yorum_cache(btc_fiyat_r, rejim_etiketi, kazanc, bh_kazanc, strateji_deger, bh_deger, kisa_bull, makro_bull):
+def gemini_yorum_cache(btc_fiyat_r, rejim_etiketi, kazanc, kisa_bull, makro_bull):
     prompt = f"""
 Sen bir makro piyasa analistisin. Aşağıdaki verilere bakarak sıradan bir yatırımcının anlayabileceği,
 sade Türkçe ile 4-6 cümlelik bir özet yorum yaz. Teknik jargon kullanma.
@@ -121,7 +150,7 @@ Sonunda tek cümleyle "Şu an ne yapmalı?" önerisi ver.
 - Mevcut Piyasa Rejimi: {rejim_etiketi}
 - Kısa Vade (SMA10): {'Boğa' if kisa_bull else 'Ayı'}
 - Uzun Vade (SMA50): {'Boğa' if makro_bull else 'Ayı'}
-- 8 Yıllık Strateji Kazancı: %{kazanc:+.1f} (${strateji_deger:,.0f})
+- 8 Yıllık Rotasyon Kazancı: %{kazanc:+.1f}
 
 Sadece yorum metni üret.
 """
@@ -212,31 +241,38 @@ try:
     makro_bull = son_rasyo < sma50
 
     if makro_bull and kisa_bull:
-        rejim_kodu = "strong_on"; rejim_etiketi = "🟢🟢 GÜÇLÜ BOĞA"; rejim_aciklama = "Her iki sinyal BTC lehine"; status_text = "Güçlü Boğa"; btc_pct_now, alt_pct_now = 100, 0
+        rejim_kodu = "strong_on"
+        rejim_etiketi = "🟢🟢 GÜÇLÜ BOĞA"
+        rejim_aciklama = "Her iki sinyal BTC lehine"
+        status_text = "Güçlü Boğa"
+        btc_pct_now, alt_pct_now = 100, 0
     elif makro_bull and not kisa_bull:
-        rejim_kodu = "weak_on"; rejim_etiketi = "🟡🟢 BOĞA + Kısa Düzeltme"; rejim_aciklama = "Büyük trend yukarı"; status_text = "Boğa + Düzeltme"; btc_pct_now, alt_pct_now = 50, 50
+        rejim_kodu = "weak_on"
+        rejim_etiketi = "🟡🟢 BOĞA + Kısa Düzeltme"
+        rejim_aciklama = "Büyük trend yukarı"
+        status_text = "Boğa + Düzeltme"
+        btc_pct_now, alt_pct_now = 50, 50
     elif not makro_bull and kisa_bull:
-        rejim_kodu = "weak_off"; rejim_etiketi = "🟠🔴 AYI + Kısa Toparlanma"; rejim_aciklama = "Büyük trend aşağı"; status_text = "Ayı + Toparlanma"; btc_pct_now, alt_pct_now = 0, 100
+        rejim_kodu = "weak_off"
+        rejim_etiketi = "🟠🔴 AYI + Kısa Toparlanma"
+        rejim_aciklama = "Büyük trend aşağı"
+        status_text = "Ayı + Toparlanma"
+        btc_pct_now, alt_pct_now = 0, 100
     else:
-        rejim_kodu = "strong_off"; rejim_etiketi = "🔴🔴 GÜÇLÜ AYI"; rejim_aciklama = "Her iki sinyal BTC aleyhine"; status_text = "Güçlü Ayı"; btc_pct_now, alt_pct_now = 0, 100
+        rejim_kodu = "strong_off"
+        rejim_etiketi = "🔴🔴 GÜÇLÜ AYI"
+        rejim_aciklama = "Her iki sinyal BTC aleyhine"
+        status_text = "Güçlü Ayı"
+        btc_pct_now, alt_pct_now = 0, 100
 
     first_btc = data["Bitcoin"].iloc[0]
     bh_qty = 10000.0 / first_btc
     data["BuyHold"] = bh_qty * data["Bitcoin"]
     bh_son = data["BuyHold"].iloc[-1]
     bh_kazanc = (bh_son / 10000.0 - 1) * 100
-    rot_son = equity_df["Portfoy"].iloc[-1]
-    rot_kazanc = (rot_son / 10000.0 - 1) * 100
 
-    st.markdown("""
-    <div class="lk-shell">
-    <div class="lk-header">
-        <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD · Likidite Kompoziti · 8 Yıllık Analiz</div>
-        <p class="lk-title">Süper Kompozit Likidite Paneli</p>
-        <p class="lk-subtitle">Altın · Bakır · Bitcoin rasyosu üzerinden likidite yönü, rejim ve BTC fırsatlarını takip et</p>
-    </div>
-    </div>
-    """, unsafe_allow_html=True)
+    rot_son = equity_df["Portföy"].iloc[-1]
+    rot_kazanc = (rot_son / 10000.0 - 1) * 100
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Bitcoin", f"${btc_fiyat:,.0f}", f"{format_pct((btc_fiyat / data['Bitcoin'].iloc[-2] - 1) * 100)} son gün")
@@ -272,11 +308,13 @@ try:
     }), use_container_width=True, hide_index=True)
 
     st.markdown("## 8 Yıllık İşlem Günlüğü")
-    st.dataframe(trade_log, use_container_width=True, hide_index=True)
+    display_log = trade_log.copy()
+    display_log.columns = display_log.columns.astype(str).str.strip()
+    st.dataframe(display_log, use_container_width=True, hide_index=True)
 
     st.markdown("## Portföy Eğrisi")
     fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=equity_df.index, y=equity_df["Portfoy"], name="Rotasyon Portföyü", line=dict(color="#6FE3B5", width=2.5)))
+    fig2.add_trace(go.Scatter(x=equity_df.index, y=equity_df["Portföy"], name="Rotasyon Portföyü", line=dict(color="#6FE3B5", width=2.5)))
     fig2.add_trace(go.Scatter(x=data.index, y=data["BuyHold"], name="BTC Al-Tut", line=dict(color="#F0B90B", width=1.3, dash="dot")))
     fig2.update_layout(height=320, template="plotly_dark", paper_bgcolor="#0F131C", plot_bgcolor="#0F131C", yaxis=dict(title="USD"))
     st.plotly_chart(fig2, use_container_width=True)
@@ -285,7 +323,7 @@ try:
     yorum = None
     if GEMINI_KEY:
         with st.spinner("Piyasa verileri yorumlanıyor..."):
-            yorum = gemini_yorum_cache(round(btc_fiyat / 500) * 500, status_text, rot_kazanc, bh_kazanc, rot_son, bh_son, kisa_bull, makro_bull)
+            yorum = gemini_yorum_cache(round(btc_fiyat / 500) * 500, status_text, rot_kazanc, kisa_bull, makro_bull)
     st.markdown(f'<div class="lk-ai-box">{yorum if yorum else "AI yorumu alınamadı. Veriler normal çalışıyor."}</div>', unsafe_allow_html=True)
 
 except Exception as e:
