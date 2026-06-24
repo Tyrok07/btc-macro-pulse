@@ -26,7 +26,7 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.stApp { background: #0B0E14; color: #E6E9EF; }
+.stApp { background: #F8F9FC; color: #1A1D23; }
 .lk-header { padding: 26px 4px 18px 4px; border-bottom: 1px solid #1E2430; margin-bottom: 22px; }
 .lk-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #6FE3B5; margin-bottom: 6px; }
 .lk-title { font-size: 30px; font-weight: 700; color: #F2F4F8; margin: 0; letter-spacing: -0.01em; }
