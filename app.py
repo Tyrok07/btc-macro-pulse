@@ -454,7 +454,7 @@ try:
 
     fig1 = go.Figure()
     fig1.add_trace(go.Scatter(x=data.index, y=data["Rasyo"],
-        name="Rasyo", line=dict(color="#7C8595", width=1.0), opacity=0.7))
+        name="Rasyo", line=dict(color=SUB, width=1.0), opacity=0.7))
 
     # Renk değişen SMA10
     data["Renk10"] = (data["Rasyo"] < data["SMA10"]).map({True:"#4ADE80", False:"#F87171"})
@@ -483,11 +483,11 @@ try:
     fig1.update_layout(
         height=540, template=PLOTTEM,
         paper_bgcolor=PLOTBG, plot_bgcolor=PLOTBG,
-        font=dict(family="Inter", color="#E6E9EF"),
+        font=dict(family="Inter", color=TEXT),
         margin=dict(l=10, r=10, t=10, b=10),
-        xaxis=dict(gridcolor="#1E2430"),
-        yaxis=dict(title="Rasyo", gridcolor="#1E2430",
-                   title_font=dict(color="#7C8595"), tickfont=dict(color="#7C8595")),
+        xaxis=dict(gridcolor=BORDER),
+        yaxis=dict(title="Rasyo", gridcolor=BORDER,
+                   title_font=dict(color=SUB), tickfont=dict(color=SUB)),
         yaxis2=dict(title="BTC (USD)", overlaying="y", side="right",
                     title_font=dict(color="#F0B90B"), tickfont=dict(color="#F0B90B"),
                     gridcolor="rgba(0,0,0,0)"),
@@ -509,11 +509,11 @@ try:
     fig2.update_layout(
         height=360, template=PLOTTEM,
         paper_bgcolor=PLOTBG, plot_bgcolor=PLOTBG,
-        font=dict(family="Inter", color="#E6E9EF"),
+        font=dict(family="Inter", color=TEXT),
         margin=dict(l=10, r=10, t=10, b=10),
-        xaxis=dict(gridcolor="#1E2430"),
-        yaxis=dict(title="Portföy Değeri (USD)", gridcolor="#1E2430",
-                   title_font=dict(color="#7C8595"), tickfont=dict(color="#7C8595")),
+        xaxis=dict(gridcolor=BORDER),
+        yaxis=dict(title="Portföy Değeri (USD)", gridcolor=BORDER,
+                   title_font=dict(color=SUB), tickfont=dict(color=SUB)),
         legend=dict(orientation="h", y=1.04, x=1, xanchor="right",
                     bgcolor="rgba(0,0,0,0)"))
     st.plotly_chart(fig2, use_container_width=True)
@@ -532,11 +532,11 @@ try:
     fig3.update_layout(
         height=200, template=PLOTTEM,
         paper_bgcolor=PLOTBG, plot_bgcolor=PLOTBG,
-        font=dict(family="Inter", color="#E6E9EF"),
+        font=dict(family="Inter", color=TEXT),
         margin=dict(l=10, r=10, t=10, b=10),
-        xaxis=dict(gridcolor="#1E2430"),
-        yaxis=dict(title="%", gridcolor="#1E2430", range=[0,110],
-                   title_font=dict(color="#7C8595"), tickfont=dict(color="#7C8595")),
+        xaxis=dict(gridcolor=BORDER),
+        yaxis=dict(title="%", gridcolor=BORDER, range=[0,110],
+                   title_font=dict(color=SUB), tickfont=dict(color=SUB)),
         legend=dict(orientation="h", y=1.08, x=1, xanchor="right",
                     bgcolor="rgba(0,0,0,0)"))
     st.plotly_chart(fig3, use_container_width=True)
