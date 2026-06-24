@@ -70,7 +70,7 @@ def verileri_getir():
 
 # ── GÜVENLİ REJİM TESPİT FONKSİYONU (THRESHOLD EKLENDİ) ──────────────────────
 def rejim_tespit(rasyo, sma10, sma50):
-    # %1'lik bir emniyet marjı (Threshold) ekleyerek sahte kırılımları engelliyoruz
+    # %1'lik bir emniyet marjı (Threshold) ekleyerek sahte kırılımları engellyoruz
     THRESHOLD = 0.01 
     
     # Güçlü Boğa: Rasyo her iki ortalamanın da bariz altında olmalı
@@ -91,6 +91,10 @@ def rejim_tespit(rasyo, sma10, sma50):
 
 # ── İYİLEŞTİRİLMİŞ BACKTEST FONKSİYONU ────────────────────────────────────────
 def backtest_rotasyon(data):
+    # Boş veri koruması
+    if data.empty:
+        return data, pd.DataFrame()
+
     portfoy = 10000.0
     nakit = portfoy
     t_btc, t_alt = 0, 0
@@ -153,7 +157,7 @@ def backtest_rotasyon(data):
         
     return data, trade_log
 
-# ── TELEGRAM & ALARM SİSTEMİ (AYNI KALDI) ──────────────────────────────────────
+# ── TELEGRAM & ALARM SİSTEMİ ──────────────────────────────────────────────────
 def load_alert_state():
     if ALERT_STATE_FILE.exists():
         try:
@@ -213,9 +217,15 @@ st.markdown('<div class="lk-subtitle">Altın / (Bakır × Bitcoin) Makro Rejim T
 try:
     data = verileri_getir()
 except Exception as e:
-    st.error(f"Veri çekme hatası: {e}")
+    st.error(f"Yahoo Finance bağlantı hatası: {e}")
     st.stop()
 
+# Kritik boş veri kontrolü filtresi
+if data.empty:
+    st.warning("⚠️ Yahoo Finance'ten şu an temiz veri alınamadı veya piyasa saatleri nedeniyle semboller eşleşmedi. Lütfen sayfayı yenilemeyi deneyin.")
+    st.stop()
+
+# Veri başarılıysa hesaplamalara geç
 data, trade_log = backtest_rotasyon(data)
 check_and_trigger_alerts(data)
 
