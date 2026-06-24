@@ -22,28 +22,56 @@ STATE_DIR.mkdir(exist_ok=True)
 ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
-st.markdown("""
+# ══════════════════════════════════════════════════════════════════════════════
+# TEMA — "dark" veya "light" yazarak tüm renkleri değiştir
+# ══════════════════════════════════════════════════════════════════════════════
+TEMA = "dark"   # ← SADECE BU SATIRI DEĞİŞTİR
+
+if TEMA == "dark":
+    BG      = "#0B0E14"
+    CARD    = "#131722"
+    BORDER  = "#1E2430"
+    BORDER2 = "#2A3140"
+    TEXT    = "#E6E9EF"
+    TEXT2   = "#F2F4F8"
+    SUB     = "#7C8595"
+    MUTEDTX = "#C8CDD8"
+    PLOTBG  = "#0B0E14"
+    PLOTTEM = "plotly_dark"
+else:
+    BG      = "#F4F6FA"
+    CARD    = "#FFFFFF"
+    BORDER  = "#E2E6EF"
+    BORDER2 = "#CBD2E0"
+    TEXT    = "#1A1D23"
+    TEXT2   = "#111318"
+    SUB     = "#6B7280"
+    MUTEDTX = "#374151"
+    PLOTBG  = "#FFFFFF"
+    PLOTTEM = "plotly_white"
+
+st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.stApp { background: #F8F9FC; color: #1A1D23; }
-.lk-header { padding: 26px 4px 18px 4px; border-bottom: 1px solid #1E2430; margin-bottom: 22px; }
-.lk-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #6FE3B5; margin-bottom: 6px; }
-.lk-title { font-size: 30px; font-weight: 700; color: #F2F4F8; margin: 0; letter-spacing: -0.01em; }
-.lk-subtitle { font-size: 14px; color: #7C8595; margin-top: 5px; }
-div[data-testid="stMetric"] { background: #131722; border: 1px solid #1E2430; border-radius: 12px; padding: 14px 16px; }
-div[data-testid="stMetric"] label { color: #7C8595 !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.04em; }
-div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; font-size: 20px !important; color: #F2F4F8 !important; }
-.lk-regime { border-radius: 12px; padding: 13px 18px; border: 1px solid; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; line-height: 1.6; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.lk-regime-strong-on  { background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.5);  color: #4ADE80; }
-.lk-regime-weak-on    { background: rgba(234,179,8,0.10);  border-color: rgba(234,179,8,0.4);  color: #FCD34D; }
-.lk-regime-weak-off   { background: rgba(249,115,22,0.10); border-color: rgba(249,115,22,0.4); color: #FB923C; }
-.lk-regime-strong-off { background: rgba(239,68,68,0.10);  border-color: rgba(239,68,68,0.4);  color: #F87171; }
-.lk-section { font-size: 15px; font-weight: 600; color: #F2F4F8; margin: 28px 0 12px 0; padding-left: 10px; border-left: 3px solid #6FE3B5; }
-.lk-ai-box { background: #131722; border: 1px solid #1E2430; border-radius: 12px; padding: 20px 24px; line-height: 1.80; font-size: 15px; color: #C8CDD8; }
-.stButton > button { background: #131722; border: 1px solid #2A3140; color: #E6E9EF; border-radius: 8px; font-weight: 500; padding: 8px 18px; }
-.stButton > button:hover { border-color: #6FE3B5; color: #6FE3B5; }
-.stTextInput input { background: #131722; border: 1px solid #1E2430; color: #E6E9EF; border-radius: 8px; }
+html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
+.stApp {{ background: {BG}; color: {TEXT}; }}
+.lk-header {{ padding: 26px 4px 18px 4px; border-bottom: 1px solid {BORDER}; margin-bottom: 22px; }}
+.lk-eyebrow {{ font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #6FE3B5; margin-bottom: 6px; }}
+.lk-title {{ font-size: 30px; font-weight: 700; color: {TEXT2}; margin: 0; letter-spacing: -0.01em; }}
+.lk-subtitle {{ font-size: 14px; color: {SUB}; margin-top: 5px; }}
+div[data-testid="stMetric"] {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 12px; padding: 14px 16px; }}
+div[data-testid="stMetric"] label {{ color: {SUB} !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.04em; }}
+div[data-testid="stMetricValue"] {{ font-family: 'JetBrains Mono', monospace; font-size: 20px !important; color: {TEXT2} !important; }}
+.lk-regime {{ border-radius: 12px; padding: 13px 18px; border: 1px solid; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; line-height: 1.6; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }}
+.lk-regime-strong-on  {{ background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.5);  color: #4ADE80; }}
+.lk-regime-weak-on    {{ background: rgba(234,179,8,0.10);  border-color: rgba(234,179,8,0.4);  color: #F59E0B; }}
+.lk-regime-weak-off   {{ background: rgba(249,115,22,0.10); border-color: rgba(249,115,22,0.4); color: #F97316; }}
+.lk-regime-strong-off {{ background: rgba(239,68,68,0.10);  border-color: rgba(239,68,68,0.4);  color: #EF4444; }}
+.lk-section {{ font-size: 15px; font-weight: 600; color: {TEXT2}; margin: 28px 0 12px 0; padding-left: 10px; border-left: 3px solid #6FE3B5; }}
+.lk-ai-box {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 12px; padding: 20px 24px; line-height: 1.80; font-size: 15px; color: {MUTEDTX}; }}
+.stButton > button {{ background: {CARD}; border: 1px solid {BORDER2}; color: {TEXT}; border-radius: 8px; font-weight: 500; padding: 8px 18px; }}
+.stButton > button:hover {{ border-color: #6FE3B5; color: #6FE3B5; }}
+.stTextInput input {{ background: {CARD}; border: 1px solid {BORDER}; color: {TEXT}; border-radius: 8px; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -60,7 +88,7 @@ st.markdown("""
 GEMINI_KEY      = str(st.secrets.get("GEMINI_API_KEY",  "")).strip()
 TOKEN           = str(st.secrets.get("TELEGRAM_TOKEN",  "")).strip()
 CHAT_ID         = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
-KONTROL_ARALIK  = 1440  # dakika
+KONTROL_ARALIK  = 15  # dakika
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TEK REJİM FONKSİYONU — hem backtest hem UI hem scheduler burayı kullanır.
@@ -291,7 +319,17 @@ def rejim_kontrol_ve_bildir():
                 f"💼 Yeni Pozisyon: BTC %{t_btc} · Altın %{t_alt}\n\n"
                 f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
             )
-            telegram_gonder(mesaj)
+            try:
+                r = requests.post(
+                    f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                    json={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"},
+                    timeout=10)
+                state["son_telegram"] = (
+                    "✅ Gönderildi" if r.ok
+                    else f"❌ {r.json().get('description', 'Hata')}"
+                )
+            except Exception as te:
+                state["son_telegram"] = f"❌ Bağlantı hatası: {te}"
 
         state.update({
             "rejim":       etiket,
@@ -322,6 +360,15 @@ try:
         st.error("Veri yeterli büyüklükte değil.")
         st.stop()
 
+    # Tüm gerekli sütunların dolu olduğunu kontrol et
+    for col in ["Altin", "Bakir", "Bitcoin"]:
+        if col not in raw.columns:
+            st.error(f"'{col}' verisi çekilemedi. Lütfen sayfayı yenileyin.")
+            st.stop()
+        if raw[col].isna().all():
+            st.error(f"'{col}' verisi tamamen boş. Lütfen sayfayı yenileyin.")
+            st.stop()
+
     data, trade_log, stats = backtest_rotasyon(raw)
 
     last       = data.iloc[-1]
@@ -348,8 +395,10 @@ try:
     bh_alt_son = float(data["BH_Altin"].iloc[-1])
     bh_alt_k   = (bh_alt_son / 10000.0 - 1) * 100
 
-    btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100
-    alt_degisim = (alt_fiyat / float(data["Altin"].iloc[-2])   - 1) * 100
+    btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100 \
+                  if len(data) >= 2 else 0.0
+    alt_degisim = (alt_fiyat / float(data["Altin"].iloc[-2])   - 1) * 100 \
+                  if len(data) >= 2 else 0.0
 
     # ── 1. METRİK KARTLARI ──────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -432,8 +481,8 @@ try:
             line=dict(color=col, dash=dsh, width=2)))
 
     fig1.update_layout(
-        height=540, template="plotly_dark",
-        paper_bgcolor="#0B0E14", plot_bgcolor="#0B0E14",
+        height=540, template=PLOTTEM,
+        paper_bgcolor=PLOTBG, plot_bgcolor=PLOTBG,
         font=dict(family="Inter", color="#E6E9EF"),
         margin=dict(l=10, r=10, t=10, b=10),
         xaxis=dict(gridcolor="#1E2430"),
@@ -458,8 +507,8 @@ try:
     fig2.add_trace(go.Scatter(x=data.index, y=data["BH_Altin"],
         name="Altın Al-Tut", line=dict(color="#E5C07B", width=1.5, dash="dash")))
     fig2.update_layout(
-        height=360, template="plotly_dark",
-        paper_bgcolor="#0B0E14", plot_bgcolor="#0B0E14",
+        height=360, template=PLOTTEM,
+        paper_bgcolor=PLOTBG, plot_bgcolor=PLOTBG,
         font=dict(family="Inter", color="#E6E9EF"),
         margin=dict(l=10, r=10, t=10, b=10),
         xaxis=dict(gridcolor="#1E2430"),
@@ -481,8 +530,8 @@ try:
         name="Altın %", line=dict(color="#E5C07B", width=1.2),
         fill="tozeroy", fillcolor="rgba(229,192,123,0.08)"))
     fig3.update_layout(
-        height=200, template="plotly_dark",
-        paper_bgcolor="#0B0E14", plot_bgcolor="#0B0E14",
+        height=200, template=PLOTTEM,
+        paper_bgcolor=PLOTBG, plot_bgcolor=PLOTBG,
         font=dict(family="Inter", color="#E6E9EF"),
         margin=dict(l=10, r=10, t=10, b=10),
         xaxis=dict(gridcolor="#1E2430"),
@@ -514,7 +563,7 @@ try:
                 unsafe_allow_html=True)
 
     state = load_state()
-    a1, a2, a3 = st.columns(3)
+    a1, a2, a3, a4 = st.columns(4)
     a1.metric("Kontrol Sıklığı",
               f"Her {KONTROL_ARALIK} dakika",
               "✅ Aktif" if SCHEDULER_OK else "⚠️ APScheduler eksik")
@@ -523,7 +572,10 @@ try:
               f"BTC {fmt_usd(state['btc_fiyat'])}" if "btc_fiyat" in state else "")
     a3.metric("İzlenen Rejim",
               state.get("rejim", "—"),
-              "Değişince Telegram alarmı")
+              "Değişince alarm")
+    a4.metric("Son Telegram",
+              state.get("son_telegram", "Henüz alarm gönderilmedi"),
+              "")
 
     if not SCHEDULER_OK:
         st.warning("APScheduler kurulu değil — `requirements.txt`'e `apscheduler>=3.10.4` ekleyin.")
@@ -624,6 +676,19 @@ Soru: {soru}
                 else:
                     hata = r.json().get("description", r.text)
                     st.error(f"Telegram hatası: {hata}")
+                    if "chat was deleted" in hata or "chat not found" in hata.lower():
+                        st.info(
+                            "💡 **Çözüm:** Grup silinmiş. Kişisel chat ID'nizi kullanın:\n\n"
+                            "1. Telegram'da `@userinfobot` botunu açın\n"
+                            "2. `/start` yazın → size kişisel ID'nizi verir\n"
+                            "3. Streamlit secrets'ta `TELEGRAM_CHAT_ID` değerini bu ID ile güncelleyin"
+                        )
+                    elif "Unauthorized" in hata or "bot was blocked" in hata:
+                        st.info(
+                            "💡 **Çözüm:** Bot token geçersiz veya bloklanmış.\n\n"
+                            "1. `@BotFather`'da `/mybots` → botunuzu seçin → `API Token`\n"
+                            "2. Streamlit secrets'ta `TELEGRAM_TOKEN` değerini güncelleyin"
+                        )
             except Exception as e:
                 st.error(f"Bağlantı hatası: {e}")
 
