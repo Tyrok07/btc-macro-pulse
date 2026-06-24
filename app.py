@@ -14,7 +14,7 @@ import numpy as np
 load_dotenv()
 
 # ── SAYFA AYARI ───────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Likidite Kompozit Paneli v3", layout="wide", page_icon="◆")
+st.set_page_config(page_title="Likidite Kompozit Paneli v3.1", layout="wide", page_icon="◆")
 
 # Streamlit Secrets veya Ortam Değişkenleri senkronizasyonu
 if "GEMINI_API_KEY" not in st.secrets:
@@ -66,7 +66,7 @@ div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; fon
 # ── BAŞLIK ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="lk-header">
-    <div class="lk-eyebrow">XAUUSD / BTCUSD · Likidite Analizi · 8 Yıllık Backtest (V3 - DÜZELTILMIŞ)</div>
+    <div class="lk-eyebrow">XAUUSD / BTCUSD · Likidite Analizi · 8 Yıllık Backtest (V3.1 - GÜVENLI)</div>
     <p class="lk-title">Likidite Paneli - Rejim Tespiti Düzeltildi</p>
     <p class="lk-subtitle">SMA10 vs SMA50 Trend + Au/BTC Momentum Stratejisi</p>
 </div>
@@ -74,11 +74,10 @@ st.markdown("""
 
 st.markdown("""
 <div class="success-box">
-✅ <b>V3.0 Düzeltmeleri:</b><br>
-• Rejim tespiti mantığı düzeltildi (SMA trend + Au/BTC pozisyonu)<br>
-• Gerçekçi pozisyon dağılımı<br>
-• Daha düşük Drawdown<br>
-• Tutarlı sonuçlar<br>
+✅ <b>V3.1 Güvenlik Güncellemesi:</b><br>
+• Boş veri kontrolleri eklendi<br>
+• data.iloc[-1] öncesi validasyon<br>
+• Hata toleransı geliştirildi<br>
 </div>
 """, unsafe_allow_html=True)
 
@@ -232,14 +231,14 @@ def verileri_getir():
             if attempt < 2:
                 continue
             else:
-                st.error("Veri alınamadı.")
+                st.error("❌ Veri alınamadı.")
                 return pd.DataFrame()
     
     return pd.DataFrame()
 
-# ── BACKTEST V3 ────────────────────────────────────────────────────────────────
+# ── BACKTEST V3.1 (GÜVENLI VERSİYON) ───────────────────────────────────────────
 def backtest_rotasyon_v3(df):
-    """DÜZELTILMIŞ BACKTEST V3"""
+    """DÜZELTILMIŞ BACKTEST V3 - GÜVENLI VERSİYON"""
     d = df.copy()
     
     # Rasyoları hesapla
@@ -253,8 +252,16 @@ def backtest_rotasyon_v3(df):
     
     d = d.dropna().copy()
     
-    if len(d) < 60:
-        return d, pd.DataFrame(), {}
+    # 🛡️ GÜVENLIK KONTROLÜ 1: Dropna sonrası kontrol
+    if d.empty or len(d) < 60:
+        empty_stats = {
+            "islem_sayisi": 0,
+            "btc_gun": 0,
+            "alt_gun": 0,
+            "max_dd": 0.0,
+            "toplam_gun": 0
+        }
+        return pd.DataFrame(), pd.DataFrame(), empty_stats
     
     # Portföy simülasyonu
     cash = 10000.0
@@ -297,13 +304,13 @@ def backtest_rotasyon_v3(df):
             # Yeni pozisyonu aç
             if t_btc == 0:
                 btc_qty = 0
-                alt_qty = cash / ap
+                alt_qty = cash / ap if ap > 0 else 0
             elif t_alt == 0:
                 alt_qty = 0
-                btc_qty = cash / bp
+                btc_qty = cash / bp if bp > 0 else 0
             else:
-                btc_qty = (cash * t_btc / 100) / bp
-                alt_qty = (cash * t_alt / 100) / ap
+                btc_qty = (cash * t_btc / 100) / bp if bp > 0 else 0
+                alt_qty = (cash * t_alt / 100) / ap if ap > 0 else 0
             
             cash = 0
             
@@ -321,13 +328,13 @@ def backtest_rotasyon_v3(df):
             # İlk işlem
             if t_btc == 0:
                 btc_qty = 0
-                alt_qty = cash / ap
+                alt_qty = cash / ap if ap > 0 else 0
             elif t_alt == 0:
                 alt_qty = 0
-                btc_qty = cash / bp
+                btc_qty = cash / bp if bp > 0 else 0
             else:
-                btc_qty = (cash * t_btc / 100) / bp
-                alt_qty = (cash * t_alt / 100) / ap
+                btc_qty = (cash * t_btc / 100) / bp if bp > 0 else 0
+                alt_qty = (cash * t_alt / 100) / ap if ap > 0 else 0
             
             cash = 0
             
@@ -345,7 +352,7 @@ def backtest_rotasyon_v3(df):
         # Portföy hesapla
         port_now = cash + btc_qty * bp + alt_qty * ap
         max_port = max(max_port, port_now)
-        dd = (port_now - max_port) / max_port * 100
+        dd = (port_now - max_port) / max_port * 100 if max_port > 0 else 0
         max_dd = min(max_dd, dd)
         
         # İstatistikler
@@ -387,7 +394,7 @@ def gemini_api_yorum_uret(rejim_adi):
         prompt = (
             f"Sen deneyimli bir makro ekonomi ve kripto para analistisin. "
             f"Altın/Bitcoin oranına göre piyasa şu an şu rejimde: '{rejim_adi}'. "
-            f"Bu durumu teknik jargon kullanmadan, sıradan bir yatırımcının kolayca anlayabileceği bir dille yorumla. "
+            f"Bu durumu teknik jargon kullanmadan, sıradan bir yatırımcının kolayca anlayabileceği bir dilde yorumla. "
             f"Yatırımcının şu an ne yapması gerektiğine, portföyünü nasıl yönetmesi gerektiğine dair net tavsiyeler ver. "
             f"Cevabın toplamda 4 ile 6 cümle arasında, akıcı ve bilgilendirici olsun."
         )
@@ -410,11 +417,16 @@ try:
     raw = verileri_getir()
     
     if raw.empty or len(raw) < 60:
-        st.error("❌ Veri yeterli büyüklükte değil.")
+        st.error("❌ Veri yeterli büyüklükte değil (minimum 60 gün gerekli).")
         st.stop()
     
     # Backtest çalıştır
     data, trade_log, stats = backtest_rotasyon_v3(raw)
+    
+    # 🛡️ GÜVENLIK KONTROLÜ 2: data.iloc[-1] öncesi validasyon
+    if data.empty or len(data) < 2:
+        st.error("❌ Backtest veri işleme hatası: Yeterli satır yok.")
+        st.stop()
     
     # Son veriler
     last = data.iloc[-1]
@@ -491,8 +503,8 @@ try:
     st.markdown('<div class="lk-section">📈 Strateji Performans İstatistikleri</div>', unsafe_allow_html=True)
     st1, st2, st3, st4, st5 = st.columns(5)
     st1.metric("Toplam İşlem", str(stats["islem_sayisi"]), "rejim geçişi")
-    st2.metric("100% BTC Günleri", f"{stats['btc_gun']} gün", fmt_pct(stats['btc_gun'] / stats['toplam_gun'] * 100))
-    st3.metric("100% Altın Günleri", f"{stats['alt_gun']} gün", fmt_pct(stats['alt_gun'] / stats['toplam_gun'] * 100))
+    st2.metric("100% BTC Günleri", f"{stats['btc_gun']} gün", fmt_pct(stats['btc_gun'] / stats['toplam_gun'] * 100) if stats['toplam_gun'] > 0 else "0%")
+    st3.metric("100% Altın Günleri", f"{stats['alt_gun']} gün", fmt_pct(stats['alt_gun'] / stats['toplam_gun'] * 100) if stats['toplam_gun'] > 0 else "0%")
     st4.metric("Maks. Drawdown", fmt_pct(stats["max_dd"]), "En Kötü Durum")
     st5.metric("Periyot", f"{len(data)} gün", "~8 Yıl")
 
@@ -588,7 +600,7 @@ try:
     if not trade_log.empty:
         st.dataframe(trade_log.tail(20), use_container_width=True, hide_index=True)
     else:
-        st.info("İşlem günlüğü boş")
+        st.info("ℹ️ İşlem günlüğü boş - rejim geçişi henüz başlamadı")
 
     # ── REJİM DAĞILIMI ──────────────────────────────────────────────────────────
     st.markdown('<div class="lk-section">📊 Rejim Dağılım Analizi</div>', unsafe_allow_html=True)
@@ -599,7 +611,7 @@ try:
         st.write("**Rejim İsimlerine Göre Dağılım:**")
         regime_counts = pd.Series(data["Rejim"]).value_counts()
         for regime, count in regime_counts.items():
-            pct = count / len(data) * 100
+            pct = count / len(data) * 100 if len(data) > 0 else 0
             st.write(f"• {regime}: {count} gün ({pct:.1f}%)")
     
     with col_dist2:
@@ -607,7 +619,7 @@ try:
         btc_pct_counts = data["BtcPct"].value_counts().sort_index(ascending=False)
         for btc_pct, count in btc_pct_counts.head(10).items():
             alt_pct = 100 - btc_pct
-            pct = count / len(data) * 100
+            pct = count / len(data) * 100 if len(data) > 0 else 0
             st.write(f"• BTC %{btc_pct} / Altın %{alt_pct}: {count} gün ({pct:.1f}%)")
 
     # ── DETAYLI ÖZET ───────────────────────────────────────────────────────────
@@ -637,8 +649,8 @@ try:
             f"{bh_btc_k:.2f}%",
             f"{bh_alt_k:.2f}%",
             str(stats["islem_sayisi"]),
-            f"{(stats['btc_gun'] / stats['toplam_gun'] * 100):.1f}%",
-            f"{(stats['alt_gun'] / stats['toplam_gun'] * 100):.1f}%",
+            f"{(stats['btc_gun'] / stats['toplam_gun'] * 100):.1f}%" if stats['toplam_gun'] > 0 else "0%",
+            f"{(stats['alt_gun'] / stats['toplam_gun'] * 100):.1f}%" if stats['toplam_gun'] > 0 else "0%",
             f"{stats['max_dd']:.2f}%",
             isim_now
         ]
