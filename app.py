@@ -49,7 +49,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ── VERİ ÇEKME FONKSİYONU ─────────────────────────────────────────────────────
+# ── KESİNTİSİZ VERİ ÇEKME FONKSİYONU (FFILL ENTEGRELİ) ─────────────────────────
 @st.cache_data(ttl=3600)
 def verileri_getir():
     semboller = {"Altin": "GC=F", "Bakir": "HG=F", "BTC": "BTC-USD"}
@@ -59,8 +59,12 @@ def verileri_getir():
         df = ticker.history(period="max")["Close"].to_frame(name=isim)
         df_list.append(df)
     
-    data = df_list[0].join(df_list[1:], how="inner")
+    # "outer" kullanarak hafta sonu açık olan kripto tarihlerini de koruyoruz
+    data = df_list[0].join(df_list[1:], how="outer")
     data = data.sort_index()
+    
+    # Geleneksel piyasaların kapalı olduğu günleri son geçerli fiyatla dolduruyoruz
+    data = data.ffill()
     
     # Rasyo Hesabı
     data["Rasyo"] = data["Altin"] / (data["Bakir"] * data["BTC"])
@@ -70,7 +74,7 @@ def verileri_getir():
 
 # ── GÜVENLİ REJİM TESPİT FONKSİYONU (THRESHOLD EKLENDİ) ──────────────────────
 def rejim_tespit(rasyo, sma10, sma50):
-    # %1'lik bir emniyet marjı (Threshold) ekleyerek sahte kırılımları engellyoruz
+    # %1'lik bir emniyet marjı (Threshold) ekleyerek sahte kırılımları engelliyoruz
     THRESHOLD = 0.01 
     
     # Güçlü Boğa: Rasyo her iki ortalamanın da bariz altında olmalı
@@ -222,7 +226,7 @@ except Exception as e:
 
 # Kritik boş veri kontrolü filtresi
 if data.empty:
-    st.warning("⚠️ Yahoo Finance'ten şu an temiz veri alınamadı veya piyasa saatleri nedeniyle semboller eşleşmedi. Lütfen sayfayı yenilemeyi deneyin.")
+    st.warning("⚠️ Yahoo Finance'ten şu an temiz veri alınamadı. Lütfen sayfayı yenilemeyi deneyin.")
     st.stop()
 
 # Veri başarılıysa hesaplamalara geç
