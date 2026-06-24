@@ -240,7 +240,7 @@ fig1.add_trace(go.Scatter(x=data.index, y=data["Rasyo"], name="Altın / (Bakır 
 fig1.add_trace(go.Scatter(x=data.index, y=data["SMA10"], name="SMA 10 (Hızlı)", line=dict(color="#10B981", width=1.5)))
 fig1.add_trace(go.Scatter(x=data.index, y=data["SMA50"], name="SMA 50 (Yavaş)", line=dict(color="#EF4444", width=1.5)))
 fig1.update_layout(
-    height=400, template="plotly_white", paper_bgcolor=\"#F8FAFC\", plot_bgcolor=\"#FFFFFF\",
+    height=400, template="plotly_white", paper_bgcolor="#F8FAFC", plot_bgcolor="#FFFFFF",
     font=dict(family="Inter", color="#1E293B"), margin=dict(l=10, r=10, t=10, b=10),
     xaxis=dict(gridcolor="#E2E8F0"), yaxis=dict(gridcolor="#E2E8F0")
 )
@@ -253,7 +253,7 @@ fig2.add_trace(go.Scatter(x=data.index, y=data["Portfoy"], name="Güvenli Rotasy
 fig2.add_trace(go.Scatter(x=data.index, y=data["BH_BTC"], name="BTC Al-Tut", line=dict(color="#F59E0B", width=1.5, dash="dot")))
 fig2.add_trace(go.Scatter(x=data.index, y=data["BH_Altin"], name="Altın Al-Tut", line=dict(color="#D97706", width=1.5, dash="dash")))
 fig2.update_layout(
-    height=350, template="plotly_white", paper_bgcolor=\"#F8FAFC\", plot_bgcolor=\"#FFFFFF\",
+    height=350, template="plotly_white", paper_bgcolor="#F8FAFC", plot_bgcolor="#FFFFFF",
     font=dict(family="Inter", color="#1E293B"), margin=dict(l=10, r=10, t=10, b=10),
     xaxis=dict(gridcolor="#E2E8F0"), yaxis=dict(title="Portföy Değeri (USD)", gridcolor="#E2E8F0"),
     legend=dict(orientation="h", y=1.04, x=1, xanchor="right", bgcolor="rgba(0,0,0,0)")
