@@ -20,9 +20,9 @@ STATE_DIR = BASE_DIR / "state"
 STATE_DIR.mkdir(exist_ok=True)
 ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
 
-TEMA = "light"
+TEMA = "dark"
 
-if TEMA == "light":
+if TEMA == "dark":
     BG = "#0B0E14"
     CARD = "#131722"
     BORDER = "#1E2430"
@@ -138,7 +138,7 @@ st.markdown(
 GEMINI_API_KEY = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
 TELEGRAM_TOKEN = str(st.secrets.get("TELEGRAM_TOKEN", "")).strip()
 TELEGRAM_CHAT_ID = str(st.secrets.get("TELEGRAM_CHAT_ID", "")).strip()
-KONTROL_ARALIK = 1400
+KONTROL_ARALIK = 15
 
 def fmt_pct(x):
     return f"{x:.1f}%"
@@ -180,6 +180,7 @@ def verileri_getir():
         "^DXY": "DXY",
         "BTC-USD": "Bitcoin",
     }
+
     df = yf.download(
         list(symbols.keys()),
         period="8y",
@@ -188,34 +189,49 @@ def verileri_getir():
         progress=False,
         group_by="ticker",
     )
+
     if df.empty:
         return pd.DataFrame()
 
+    out = pd.DataFrame(index=df.index)
+
     if isinstance(df.columns, pd.MultiIndex):
-        if "Close" in df.columns.get_level_values(1):
-            df = df["Close"].copy()
-        elif "Close" in df.columns.get_level_values(0):
-            df = df["Close"].copy()
-    elif "Close" in df.columns:
-        df = df["Close"].copy()
+        for sym, name in symbols.items():
+            try:
+                if sym in df.columns.get_level_values(0):
+                    tmp = df[sym]
+                    if isinstance(tmp, pd.DataFrame):
+                        if "Close" in tmp.columns:
+                            out[name] = tmp["Close"]
+                        elif "close" in tmp.columns:
+                            out[name] = tmp["close"]
+                elif sym in df.columns.get_level_values(1):
+                    try:
+                        out[name] = df.xs("Close", axis=1, level=1)[sym]
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    else:
+        if "Close" in df.columns:
+            out["Bitcoin"] = df["Close"]
 
-    df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
+    try:
+        m2 = pd.read_csv("https://fred.stlouisfed.org/graph/fredgraph.csv?id=M2SL")
+        m2.columns = ["Date", "M2"]
+        m2["Date"] = pd.to_datetime(m2["Date"])
+        m2 = m2.set_index("Date").resample("D").ffill()
+        out = out.join(m2, how="left")
+    except Exception:
+        pass
 
-    m2 = yf.download("^M2SL", period="10y", interval="1wk", auto_adjust=False, progress=False)
-    if not m2.empty and "Close" in m2.columns:
-        m2 = m2[["Close"]].rename(columns={"Close": "M2"})
-        m2.index = pd.to_datetime(m2.index)
-        m2 = m2.resample("D").ffill()
-        df = df.join(m2, how="left")
-
-    cols = [c for c in ["Altin", "Gumus", "Bakir", "DXY", "Bitcoin", "M2"] if c in df.columns]
-    return df[cols].ffill().bfill()
+    out = out[[c for c in ["Altin", "Gumus", "Bakir", "DXY", "Bitcoin", "M2"] if c in out.columns]]
+    return out.ffill().bfill()
 
 def rejimtespit(r, s10, s50, dxy, dxy_ma, m2, m2_ma):
     metal_risk_on = r < s10
     dxy_weak = dxy < dxy_ma
     m2_expanding = m2 > m2_ma
-
     skor = int(metal_risk_on) + int(dxy_weak) + int(m2_expanding)
 
     if skor == 3:
@@ -392,16 +408,13 @@ isim, btcpctnow, altpctnow, rejim_kodu, rejim_etiketi, rejim_aciklama = rejimtes
 
 btcfiyat = float(last["Bitcoin"])
 altfiyat = float(last["Altin"])
-sonrasyo = float(last["Rasyo"])
-sma10 = float(last["SMA10"])
-sma50 = float(last["SMA50"])
 
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Bitcoin", fmt_usd(btcfiyat))
 c2.metric("Altın", fmt_usd(altfiyat))
-c3.metric("8Y Rotasyon", fmt_usd(float(data['Portföy'].iloc[-1])))
-c4.metric("BTC Al-Tut", fmt_usd(float(10000.0 * btcfiyat / float(data['Bitcoin'].iloc[0]))))
-c5.metric("Altın Al-Tut", fmt_usd(float(10000.0 * altfiyat / float(data['Altin'].iloc[0]))))
+c3.metric("8Y Rotasyon", fmt_usd(float(data["Portföy"].iloc[-1])))
+c4.metric("BTC Al-Tut", fmt_usd(float(10000.0 * btcfiyat / float(data["Bitcoin"].iloc[0]))))
+c5.metric("Altın Al-Tut", fmt_usd(float(10000.0 * altfiyat / float(data["Altin"].iloc[0]))))
 
 st.markdown(
     f"""
@@ -439,7 +452,6 @@ st.plotly_chart(fig1, use_container_width=True)
 
 fig2 = go.Figure()
 fig2.add_trace(go.Scatter(x=data.index, y=data["Portföy"], name="BTC+Altın Rotasyon", line=dict(color="#6FE3B5", width=2.5)))
-fig2.updatelayout = fig2.update_layout
 fig2.update_layout(
     height=360,
     template=PLOTTEM,
