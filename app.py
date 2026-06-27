@@ -75,7 +75,7 @@ div[data-testid="stMetricValue"] {{ font-family: 'JetBrains Mono', monospace; fo
 # ── BAŞLIK ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="lk-header">
-    <div class="lk-eyebrow">Bitcoin Döngü Öncüsü — Tam Likidite Modeli · 8 Yıllık Makro Analiz</div>
+    <div class="lk-eyebrow">Bitcoin Döngü Öncüsü — Tam Likidite Modeli · Orijinal Pine Script v5 Entegrasyonu</div>
     <p class="lk-title">Süper Kompozit Likidite Paneli</p>
     <p class="lk-subtitle">Metal Rasyosu, DXY ve M2 Para Arzı katmanlarıyla küresel likidite akışını ve Bitcoin döngülerini takip et</p>
 </div>
@@ -88,32 +88,23 @@ CHAT_ID         = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
 KONTROL_ARALIK  = 15  # dakika
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3 KATMANLI REJİM TESPİT FONKSİYONU ("Bitcoin Döngü Öncüsü — Tam Likidite Modeli")
+# OYUN KURALLARINA SADIK REJİM TESPİT FONKSİYONU
 # ══════════════════════════════════════════════════════════════════════════════
 def rejim_tespit_tam_likidite(is_risk_on, dxy_weak, m2_expanding):
-    """
-    Pine script modelindeki 3 katmanlı skor sistemine göre rejim tespit eder[cite: 1].
-    Skor : 0, 1, 2, 3[cite: 1]
-    Çıktı : (isim, btc_pct, alt_pct, css_kodu, emoji_etiket, açıklama, skor)
-    """
-    skor = int(is_risk_on) + int(dxy_weak) + int(m2_expanding) #[cite: 1]
+    skor = int(is_risk_on) + int(dxy_weak) + int(m2_expanding)
     
     if skor == 3:
-        return ("Güçlü Boğa", 100, 0,
-                "strong-on", "🟢🟢 GÜÇLÜ GİRİŞ (3/3)",
-                "Tüm likidite motorları devrede (Risk-On, Zayıf DXY, Genişleyen M2) · Maksimum BTC Modu", skor) #[cite: 1]
+        return ("Güçlü Boğa", 100, 0, "strong-on", "🟢 GÜÇLÜ GİRİŞ (3/3)",
+                "Tüm likidite motorları devrede (Risk-On, Zayıf DXY, Genişleyen M2) · Maksimum BTC Modu", skor)
     elif skor == 2:
-        return ("Boğa + Düzeltme", 50, 50,
-                "weak-on", "🟡🟢 HAZIRLIK (2/3)",
-                "Likidite koşullarından ikisi olumlu · Dengeli Rotasyon Modu (%50 BTC - %50 Altın)", skor) #[cite: 1]
+        return ("Boğa + Düzeltme", 50, 50, "weak-on", "🟡 HAZIRLIK (2/3)",
+                "Likidite koşullarından ikisi olumlu · Dengeli Rotasyon Modu (%50 BTC - %50 Altın)", skor)
     elif skor == 1:
-        return ("Ayı + Toparlanma", 0, 100,
-                "weak-off", "🟡 UZAK DUR / DİKKAT (1/3)",
-                "Sadece tek bir likidite motoru çalışıyor · Temkinli Mod (%100 Altın Koruma)", skor) #[cite: 1]
+        return ("Ayı + Toparlanma", 0, 100, "weak-off", "🟠 DİKKAT (1/3)",
+                "Sadece tek bir likidite motoru çalışıyor · Temkinli Mod (%100 Altın Koruma)", skor)
     else:
-        return ("Güçlü Ayı", 0, 100,
-                "strong-off", "🔴🔴 TEHLİKE (0/3)",
-                "Tüm makroekonomik motorlar kapalı (Risk-Off, Güçlü DXY, Daralan M2) · Güvenli Liman Modu", skor) #[cite: 1]
+        return ("Güçlü Ayı", 0, 100, "strong-off", "🔴 UZAK DUR (0/3)",
+                "Tüm makroekonomik motorlar kapalı (Risk-Off, Güçlü DXY, Daralan M2) · Güvenli Liman Modu", skor)
 
 # ── YARDIMCI FONKSİYONLAR ────────────────────────────────────────────────────
 def fmt_pct(x): return f"%{x:+.1f}"
@@ -131,50 +122,50 @@ def save_state(s):
     except Exception:
         pass
 
-# ── VERİ GETİRME FONKSİYONU (KUSURSUZ DOLGULU) ──────────────────────────────
+# ── VERİ GETİRME FONKSİYONU (GÜVENLİ MULTI-STEP DOLGULU) ─────────────────────
 @st.cache_data(ttl=3600)
 def verileri_getir():
     symbols = {
-        "GC=F": "Altin",       # COMEX Gold[cite: 2]
-        "SI=F": "Gumus",       # COMEX Silver
-        "HG=F": "Bakir",       # COMEX Copper[cite: 2]
-        "DX-Y.NYB": "DXY",     # Dollar Index
-        "M2SL": "M2",          # FRED M2 Money Supply[cite: 2]
-        "BTC-USD": "Bitcoin"   # Bitcoin USD[cite: 2]
+        "GC=F": "Altin",       
+        "SI=F": "Gumus",       
+        "HG=F": "Bakir",       
+        "DX-Y.NYB": "DXY",     
+        "M2SL": "M2",          
+        "BTC-USD": "Bitcoin"   
     }
     df = yf.download(list(symbols.keys()), period="8y", interval="1d",
-                     auto_adjust=False, multi_level_index=False, progress=False) #[cite: 2]
+                     auto_adjust=False, multi_level_index=False, progress=False)
     if df.empty:
         return pd.DataFrame()
     if isinstance(df.columns, pd.MultiIndex):
-        df = df["Close"].copy() if "Close" in df.columns.get_level_values(0) else df.set_axis(df.columns.get_level_values(0), axis=1) #[cite: 2]
+        df = df["Close"].copy() if "Close" in df.columns.get_level_values(0) else df.set_axis(df.columns.get_level_values(0), axis=1)
     elif "Close" in df.columns:
-        df = df["Close"] #[cite: 2]
-    df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns}) #[cite: 2]
+        df = df["Close"]
+    df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
     
     cols = ["Altin", "Gumus", "Bakir", "DXY", "M2", "Bitcoin"]
     for c in cols:
         if c not in df.columns:
             df[c] = float("nan")
             
-    # CRITICAL FIX: M2 haftalık/aylık geldiğinden günlük tablodaki dropna() çökmesini ffill().bfill() ile engelliyoruz
+    # Kusursuz dolgu: Hafta sonu veya haftalık M2 boşluklarının dropna'da silinmesini tamamen önler
     df = df[cols].ffill().bfill()
     return df
 
-# ── GEMİNİ YAPAY ZEKA BAĞLANTILARI ───────────────────────────────────────────
+# ── GEMINI YAPAY ZEKA KONEKTÖRLERİ ───────────────────────────────────────────
 def gemini_api(prompt):
     if not GEMINI_KEY:
-        return None #[cite: 2]
-    for model in ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]: #[cite: 2]
+        return None
+    for model in ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}" #[cite: 2]
-            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20) #[cite: 2]
-            if r.status_code == 429: continue #[cite: 2]
-            r.raise_for_status() #[cite: 2]
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"] #[cite: 2]
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
+            r = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
+            if r.status_code == 429: continue
+            r.raise_for_status()
+            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
         except Exception:
             continue
-    return None #[cite: 2]
+    return None
 
 @st.cache_data(ttl=1800)
 def gemini_yorum_cache(btc_r, rejim, rot_k, bh_btc_k, bh_alt_k, metal_ok, dxy_ok, m2_ok):
@@ -187,31 +178,31 @@ Sonunda tek cümleyle "Şu an ne yapmalı?" önerisi ver.
 - Katman 1 (Metal Rasyosu): {"Boğa (Risk-On)" if metal_ok else "Ayı (Risk-Off)"}
 - Katman 2 (DXY Sinyal): {"Zayıf (Olumlu)" if dxy_ok else "Güçlü (Olumsuz)"}
 - Katman 3 (M2 Para Arzı): {"Genişliyor (Bol Likidite)" if m2_ok else "Daralıyor (Sıkı Likidite)"}
-- 8Y Rotasyon kazancı: {fmt_pct(rot_k)}
+- 8Y Strateji kazancı: {fmt_pct(rot_k)}
 - BTC al-tut kıyası: {fmt_pct(bh_btc_k)}
-- Altın al-tut kıyası: {fmt_pct(bh_alt_k)}
 
 Sadece yorum metni yaz, madde işareti veya başlık ekleme.
 """
     return gemini_api(prompt)
 
-# ── MODEL HESAPLAMA VE SİMÜLASYON (BACKTEST) ──────────────────────────────────
+# ── MODEL HESAPLAMA VE SİMÜLASYON (ORİJİNAL PINE MANTIĞI) ──────────────────────
 def backtest_tam_likidite_modeli(df):
     d = df.copy()
     
-    # Katman 1: Metal Rasyosu -> Gold / (Silver + Copper)[cite: 1]
+    # Katman 1: Metal Rasyosu -> Gold / (Silver + Copper)
     d["Metal_Rasyo"] = d["Altin"] / (d["Gumus"] + d["Bakir"])
-    d["Metal_MA"] = d["Metal_Rasyo"].rolling(20).mean() # input.int(20)[cite: 1]
-    d["Is_Risk_On"] = d["Metal_Rasyo"] < d["Metal_MA"] # ratio < ratio_ma[cite: 1]
+    d["Metal_MA"] = d["Metal_Rasyo"].rolling(20).mean()
+    d["Is_Risk_On"] = d["Metal_Rasyo"] < d["Metal_MA"]
     
-    # Katman 2: Dolar Endeksi -> DXY[cite: 1]
-    d["DXY_MA"] = d["DXY"].rolling(20).mean() # input.int(20)[cite: 1]
-    d["DXY_Weak"] = d["DXY"] < d["DXY_MA"] # dxy < dxy_ma[cite: 1]
+    # Katman 2: Dolar Endeksi -> DXY
+    d["DXY_MA"] = d["DXY"].rolling(20).mean()
+    d["DXY_Weak"] = d["DXY"] < d["DXY_MA"]
     
-    # Katman 3: M2 Para Arzı -> FRED:M2SL[cite: 1]
-    d["M2_MA"] = d["M2"].rolling(10).mean() # input.int(10)[cite: 1]
-    d["M2_Expanding"] = d["M2"] > d["M2_MA"] # m2 > m2_ma[cite: 1]
+    # Katman 3: M2 Para Arzı
+    d["M2_MA"] = d["M2"].rolling(10).mean()
+    d["M2_Expanding"] = d["M2"] > d["M2_MA"]
     
+    # Dropna sadece ilk 20 satırdaki MA başlangıç boşluklarını siler, ara günleri silmez.
     d = d.dropna().copy()
     if d.empty:
         return pd.DataFrame(), pd.DataFrame(), {"islem_sayisi":0, "btc_gun":0, "alt_gun":0, "max_dd":0.0, "toplam_gun":0}
@@ -231,7 +222,6 @@ def backtest_tam_likidite_modeli(df):
         bp, ap = float(row["Bitcoin"]), float(row["Altin"])
 
         isim, t_btc, t_alt, _, etiket, _, skor = rejim_tespit_tam_likidite(iron, dxyw, m2ex)
-
         port_val = cash + btc_qty * bp + alt_qty * ap
         changed  = (prev_regime is None) or (isim != prev_regime)
 
@@ -242,7 +232,7 @@ def backtest_tam_likidite_modeli(df):
                 btc_qty = (port_val * 0.5) / bp
                 alt_qty = (port_val * 0.5) / ap
                 cash = 0.0
-            else: # Skor 1 veya 0 durumunda %100 Altın Koruma Modu
+            else:
                 alt_qty = port_val / ap; btc_qty = cash = 0.0
 
             port_after = cash + btc_qty * bp + alt_qty * ap
@@ -314,7 +304,6 @@ def rejim_kontrol_ve_bildir():
         alt_fiyat = float(last["Altin"])
 
         isim, t_btc, t_alt, _, etiket, _, skor = rejim_tespit_tam_likidite(iron, dxyw, m2ex)
-
         state = load_state()
         prev  = state.get("rejim", "")
 
@@ -351,21 +340,17 @@ if SCHEDULER_OK and "scheduler_started" not in st.session_state:
     _sch.start()
     st.session_state["scheduler_started"] = True
 
-# ══════════════════════════════════════════════════════════════════════════════
-# STREAMLIT GÖRSEL AKIŞ VE ARAYÜZ MOTORU
-# ══════════════════════════════════════════════════════════════════════════════
+# ── STREAMLIT GÖRSEL AKIŞ VE ARAYÜZ MOTORU ────────────────────────────────────
 try:
     raw = verileri_getir()
-    if raw.empty or len(raw) < 60:
-        st.error("Gerekli piyasa verileri çekilemedi. Lütfen bağlantınızı kontrol edip sayfayı yenileyin.")
+    if raw.empty or len(raw) < 40:
+        st.error("Gerekli piyasa verileri çekilemedi. Lütfen sayfayı yenileyin.")
         st.stop()
 
     data, trade_log, stats = backtest_tam_likidite_modeli(raw)
 
-    # CRITICAL SECURITY KİLİDİ: out-of-bounds index hatasını önleyen mutlak filtre
     if data.empty:
-        st.error("⚠️ Model hesaplama hatası: Katman verileri dropna() aşamasında silindi ve hesaplanabilir veri seti oluşmadı.")
-        st.info("Bunun nedeni Yahoo Finance'in hafta sonu veri senkronizasyonunu geciktirmesidir. Lütfen sayfayı yenileyiniz.")
+        st.error("⚠️ Kritik Hata: Hesaplama modeli tablosu boş çıktı.")
         st.stop()
 
     last = data.iloc[-1]
@@ -379,7 +364,6 @@ try:
     isim_now, btc_pct_now, alt_pct_now, rejim_kodu, rejim_etiketi, rejim_aciklama, skor_now = \
         rejim_tespit_tam_likidite(iron_now, dxyw_now, m2ex_now)
 
-    # Performans Karşılaştırma Matrisi (8 Yıllık Portföy Büyümesi)
     data["BH_BTC"]   = (10000.0 / float(data["Bitcoin"].iloc[0])) * data["Bitcoin"]
     data["BH_Altin"] = (10000.0 / float(data["Altin"].iloc[0]))   * data["Altin"]
 
@@ -393,7 +377,7 @@ try:
     btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100 if len(data) >= 2 else 0.0
     alt_degisim = (alt_fiyat / float(data["Altin"].iloc[-2])   - 1) * 100 if len(data) >= 2 else 0.0
 
-    # ── 1. METRİK KARTLARI PANELİ ─────────────────────────────────────────────
+    # ── 1. METRİK KARTLARI ────────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Bitcoin",      fmt_usd(btc_fiyat),  fmt_pct(btc_degisim) + " son gün")
     c2.metric("Altın (Ons)",  fmt_usd(alt_fiyat),  fmt_pct(alt_degisim) + " son gün")
@@ -403,13 +387,13 @@ try:
 
     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
-    # ── 2. DİNAMİK REJİM BANNER'I ────────────────────────────────────────────
+    # ── 2. REJİM BANNER'I ─────────────────────────────────────────────────────
     st.markdown(f"""
 <div class="lk-regime lk-regime-{rejim_kodu}">
     <span>{rejim_etiketi}</span>
     <span style="font-weight:400; font-size:12px; color:#7C8595">{rejim_aciklama}</span>
     <span style="margin-left:auto; font-size:13px;">
-        Mevcut Varlık Dağılımı: <b style="color:#F0B90B">BTC %{btc_pct_now}</b>
+        Mevcut Tahsisat: <b style="color:#F0B90B">BTC %{btc_pct_now}</b>
         &nbsp;·&nbsp;
         <b style="color:#E5C07B">Altın %{alt_pct_now}</b>
     </span>
@@ -473,7 +457,7 @@ try:
             return ["background-color:rgba(34,197,94,0.12)"] * len(row)
         elif "HAZIRLIK" in str(row.get("Rejim","")):
             return ["background-color:rgba(234,179,8,0.10)"] * len(row)
-        elif "TEHLİKE" in str(row.get("Rejim","")):
+        elif "UZAK DUR" in str(row.get("Rejim","")):
             return ["background-color:rgba(239,68,68,0.10)"] * len(row)
         return [""] * len(row)
 
@@ -488,9 +472,6 @@ try:
     a2.metric("Son Veri Kontrolü", state.get("son_kontrol", "Veri bekleniyor..."), f"BTC: {fmt_usd(state['btc_fiyat'])}" if "btc_fiyat" in state else "")
     a3.metric("Mevcut Rejim İzleme", state.get("rejim", "—"), "Sinyal kilidi aktif")
     a4.metric("Telegram Bildirimi", state.get("son_telegram", "Sinyal kuyruğu sakin"), "")
-
-    if not SCHEDULER_OK:
-        st.warning("APScheduler kurulu değil veya arka planda çalıştırılamıyor — `requirements.txt` dosyanıza `apscheduler>=3.10.4` ekleyin.")
 
     # ── 8. YAPAY ZEKA LİKİDİTE VE MAKRO DÖNGÜ ANALİZİ ──────────────────────────
     st.markdown('<div class="lk-section">Yapay Zeka Likidite ve Makro Döngü Analizi</div>', unsafe_allow_html=True)
@@ -532,9 +513,6 @@ MEVCUT MODEL VERİLERİ:
 - Sabit Bitcoin Al-Tut Getirisi: {fmt_pct(bh_btc_k)} ({fmt_usd(bh_btc_son)})
 - Sabit Altın Al-Tut Getirisi: {fmt_pct(bh_alt_k)} ({fmt_usd(bh_alt_son)})
 - Maksimum Strateji Drawdown: {fmt_pct(stats['max_dd'])}
-
-İŞLEM GEÇMİŞİ ÖZETİ:
-{trade_ozet}
 
 Soru: {soru}
 """)
