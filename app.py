@@ -27,7 +27,7 @@ ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
 # ══════════════════════════════════════════════════════════════════════════════
 TEMA = "light"   # ← SADECE BU SATIRI DEĞİŞTİR
 
-if TEMA == "light":
+if TEMA == "dark":
     BG      = "#0B0E14"
     CARD    = "#131722"
     BORDER  = "#1E2430"
