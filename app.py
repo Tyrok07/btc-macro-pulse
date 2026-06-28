@@ -34,6 +34,7 @@ else:
     TEXT = "#212529"; TEXT2 = "#000000"; SUB = "#6C757D"
     C_BG = "rgba(248,249,250,0.95)"; M_BG = "rgba(255,255,255,0.8)"
 
+# Python 3.14 için CSS parantezleri çiftlenerek f-string koruması sağlandı
 st.markdown(f"""
 <style>
     .stApp {{ background-color: {BG}; color: {TEXT}; }}
@@ -68,7 +69,6 @@ def veri_hazirla():
             obj = yf.Ticker(ticker)
             df_raw = obj.history(period="max")
             if df_raw.empty:
-                # M2 haftalık veri olduğu için bazen ana birleştirmede problem yaratmaması adına ileriye dönük doldurulacak
                 if ad == "M2":
                     continue
                 st.error(f"Kritik Veri Eksik: {ad} ({ticker}) çekilemedi.")
@@ -88,30 +88,20 @@ def veri_hazirla():
         d = d.join(dfs["M2"], how="left")
         d["M2"] = d["M2"].ffill().bfill()
     else:
-        # Alternatif proxy M2
-        d["M2"] = 21000000000000  # Sabit taban değer (Hata vermemesi için)
+        d["M2"] = 21000000000000  # Alternatif sabit değer
         
     d = d.sort_index()
     
-    # ══════════════════════════════════════════
     # KATMAN 1 — METAL RASYOSU (Orijinal TradingView Mantığı)
-    # ratio = gold / (silver + copper)
-    # ══════════════════════════════════════════
     d["Rasyo"] = d["Altin"] / (d["Gumus"] + d["Bakir"])
     d["Rasyo_MA"] = d["Rasyo"].rolling(window=20).mean()
     d["Risk_On"] = d["Rasyo"] < d["Rasyo_MA"]
     
-    # ══════════════════════════════════════════
     # KATMAN 2 — DOLAR ENDEKSİ (DXY)
-    # dxy < dxy_ma => dxy_weak
-    # ══════════════════════════════════════════
     d["DXY_MA"] = d["DXY"].rolling(window=20).mean()
     d["DXY_Zayif"] = d["DXY"] < d["DXY_MA"]
     
-    # ══════════════════════════════════════════
     # KATMAN 3 — M2 PARA ARZI GENİŞLEMESİ
-    # m2 > m2_ma => m2_expanding
-    # ══════════════════════════════════════════
     d["M2_MA"] = d["M2"].rolling(window=20).mean()
     d["M2_Genisleme"] = d["M2"] > d["M2_MA"]
     
@@ -176,7 +166,7 @@ def backtest_calistir(d, baslangic_kasa=10000, komisyon_orani=0.0015):
         
         # Sinyal değiştiğinde komisyon kes ve portföyü yeniden dağıt
         if mevcut_rejim != onceki_rejim:
-            # Mevcutları nakde çevir (Satış Maliyeti)
+            # HATA DÜZELTİLDİ: Türkçe/bozuk karakter temizlendi (toplam_nakit)
             toplam_nakit = (btc_adet * c_btc + ons_altin * c_altin) * (1 - komisyon_orani)
             btc_adet = 0.0
             ons_altin = 0.0
@@ -186,12 +176,12 @@ def backtest_calistir(d, baslangic_kasa=10000, komisyon_orani=0.0015):
                 btc_adet = (toplam_nakit * (1 - komisyon_orani)) / c_btc
             elif mevcut_rejim == "🟡🟢 BOĞA + Düzeltme":
                 btc_adet = (toplam_nakit * 0.5 * (1 - komisyon_orani)) / c_btc
-                ons_altin = (toplam_nakit * 0.5 * (1 - komisyon_orani)) / c_altin
+                ons_altin = (toplam_nakit * 0.5 * (1 - komisyon_orani)) / altin_fiyat
             elif mevcut_rejim == "🟠🔴 AYI + Kısa Toparlanma":
-                btc_adet = (topラム_nakit * 0.25 * (1 - komisyon_orani)) / c_btc
-                ons_altin = (toplam_nakit * 0.75 * (1 - komisyon_orani)) / c_altin
+                btc_adet = (toplam_nakit * 0.25 * (1 - komisyon_orani)) / c_btc
+                ons_altin = (toplam_nakit * 0.75 * (1 - komisyon_orani)) / altin_fiyat
             else:
-                ons_altin = (toplam_nakit * (1 - komisyon_orani)) / c_altin
+                ons_altin = (toplam_nakit * (1 - komisyon_orani)) / altin_fiyat
                 
             onceki_rejim = mevcut_rejim
             
@@ -281,7 +271,7 @@ try:
         # Orijinal Kodundaki Telegram Ayar Bölümü ve Buton Yönetimi
         st.sidebar.subheader("⚙️ Telegram Ayarları ve Test")
         if st.sidebar.button("Telegram Test Mesajı Gönder"):
-            basari = telegram_gonder("🔔 Likidite Paneli v2 üzerinden test mesajı başarıyla tetiklendi!")
+            basari = telegram_gonder("🔔 Likidite Panel v2 üzerinden test mesajı başarıyla tetiklendi!")
             if basari: st.sidebar.success("Test Mesajı Gönderildi!")
             else: st.sidebar.error("Bağlantı Başarısız! Secrets kontrol edin.")
             
