@@ -22,7 +22,7 @@ STATE_DIR = BASE_DIR / "state"
 STATE_DIR.mkdir(exist_ok=True)
 ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
 
-# ── TEMA VE STİL AYARLARI (Python 3.14 Çakışması Engellendi) ─────────────────────
+# ── TEMA VE STİL AYARLARI ─────────────────────────────────────────────────────
 TEMA = "light"  # "dark" veya "light"
 
 if TEMA == "dark":
@@ -34,30 +34,30 @@ else:
     TEXT = "#212529"; TEXT2 = "#000000"; SUB = "#6C757D"
     C_BG = "rgba(248,249,250,0.95)"; M_BG = "rgba(255,255,255,0.8)"
 
-# Python 3.14 için CSS parantezleri çiftlenerek f-string koruması sağlandı
-st.markdown(f"""
+# KESİN ÇÖZÜM: Python 3.14 f-string hatasını engellemek için CSS'i düz metin olarak veriyoruz
+css_kodlari = """
 <style>
-    .stApp {{ background-color: {BG}; color: {TEXT}; }}
-    h1, h2, h3 {{ color: {TEXT2} !important; font-weight: 700 !important; }}
-    .stButton>button {{
-        background-color: {CARD}; color: {TEXT}; border: 1px solid {BORDER2};
+    .stApp { background-color: %s; color: %s; }
+    h1, h2, h3 { color: %s !important; font-weight: 700 !important; }
+    .stButton>button {
+        background-color: %s; color: %s; border: 1px solid %s;
         border-radius: 6px; padding: 0.5rem 1rem; transition: all 0.2s;
-    }}
-    .stButton>button:hover {{ border-color: #00D2FF; color: #00D2FF; }}
-    .metric-card {{
-        background-color: {CARD}; border: 1px solid {BORDER}; border-radius: 10px;
+    }
+    .stButton>button:hover { border-color: #00D2FF; color: #00D2FF; }
+    .metric-card {
+        background-color: %s; border: 1px solid %s; border-radius: 10px;
         padding: 1.2rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-    }}
-    .metric-label {{ color: {SUB}; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.2rem; }}
-    .metric-value {{ font-size: 1.6rem; font-weight: 700; color: {TEXT2}; }}
+    }
+    .metric-label { color: %s; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.2rem; }
+    .metric-value { font-size: 1.6rem; font-weight: 700; color: %s; }
 </style>
-""", unsafe_allowed_with_html=True)
+""" % (BG, TEXT, TEXT2, CARD, TEXT, BORDER2, CARD, BORDER, SUB, TEXT2)
+
+st.markdown(css_kodlari, unsafe_allowed_with_html=True)
 
 # ── VERI HAZIRLAMA (TRADINGVIEW İLE %100 SENKRON 3 KATMANLI MODEL) ─────────────
 @st.cache_data(ttl=3600)
 def veri_hazirla():
-    # TradingView indikatöründeki tüm enstrümanlar:
-    # Altın, Gümüş, Bakır, DXY, Bitcoin ve M2 Para Arzı (yfinance karşılığı: WM2NS)
     semboller = {
         "Altin": "GC=F", "Gumus": "SI=F", "Bakir": "HG=F", 
         "DXY": "DX-Y.NYB", "M2": "WM2NS", "BTC": "BTC-USD"
@@ -78,17 +78,15 @@ def veri_hazirla():
             st.error(f"{ad} verisi yüklenirken hata: {e}")
             return pd.DataFrame()
             
-    # Ana DataFrame birleştirme (Bitcoin merkezli)
     d = dfs["BTC"]
     for ad in ["Altin", "Gumus", "Bakir", "DXY"]:
         d = d.join(dfs[ad], how="inner")
         
-    # M2 verisini haftalıktan günlüğe çekip boşlukları doldurma (ffill)
     if "M2" in dfs:
         d = d.join(dfs["M2"], how="left")
         d["M2"] = d["M2"].ffill().bfill()
     else:
-        d["M2"] = 21000000000000  # Alternatif sabit değer
+        d["M2"] = 21000000000000
         
     d = d.sort_index()
     
@@ -105,7 +103,7 @@ def veri_hazirla():
     d["M2_MA"] = d["M2"].rolling(window=20).mean()
     d["M2_Genisleme"] = d["M2"] > d["M2_MA"]
     
-    # KÜMÜLATİF LİKİDİTE SKORU (0 ile 3 Arası Tam Puan)
+    # KÜMÜLATİF LİKİDİTE SKORU (0 ile 3 Arası)
     d["Skor"] = d["Risk_On"].astype(int) + d["DXY_Zayif"].astype(int) + d["M2_Genisleme"].astype(int)
     
     # DETAYLI REJİM SİNYALLERİ
@@ -140,7 +138,6 @@ def backtest_calistir(d, baslangic_kasa=10000, komisyon_orani=0.0015):
     btc_fiyat = ilk_satir["BTC"]
     altin_fiyat = ilk_satir["Altin"]
     
-    # İlk Gün Dağılım Dağıtımı
     if ilk_satir["Rejim"] == "🟢🟢 GÜÇLÜ BOĞA":
         btc_adet = (kasa * (1 - komisyon_orani)) / btc_fiyat
         kasa = 0
@@ -164,24 +161,21 @@ def backtest_calistir(d, baslangic_kasa=10000, komisyon_orani=0.0015):
         c_btc = row["BTC"]
         c_altin = row["Altin"]
         
-        # Sinyal değiştiğinde komisyon kes ve portföyü yeniden dağıt
         if mevcut_rejim != onceki_rejim:
-            # HATA DÜZELTİLDİ: Türkçe/bozuk karakter temizlendi (toplam_nakit)
             toplam_nakit = (btc_adet * c_btc + ons_altin * c_altin) * (1 - komisyon_orani)
             btc_adet = 0.0
             ons_altin = 0.0
             
-            # Yeni rejime geç (Alış Maliyeti)
             if mevcut_rejim == "🟢🟢 GÜÇLÜ BOĞA":
                 btc_adet = (toplam_nakit * (1 - komisyon_orani)) / c_btc
             elif mevcut_rejim == "🟡🟢 BOĞA + Düzeltme":
                 btc_adet = (toplam_nakit * 0.5 * (1 - komisyon_orani)) / c_btc
-                ons_altin = (toplam_nakit * 0.5 * (1 - komisyon_orani)) / altin_fiyat
+                ons_altin = (toplam_nakit * 0.5 * (1 - komisyon_orani)) / c_altin
             elif mevcut_rejim == "🟠🔴 AYI + Kısa Toparlanma":
                 btc_adet = (toplam_nakit * 0.25 * (1 - komisyon_orani)) / c_btc
-                ons_altin = (toplam_nakit * 0.75 * (1 - komisyon_orani)) / altin_fiyat
+                ons_altin = (toplam_nakit * 0.75 * (1 - komisyon_orani)) / c_altin
             else:
-                ons_altin = (toplam_nakit * (1 - komisyon_orani)) / altin_fiyat
+                ons_altin = (toplam_nakit * (1 - komisyon_orani)) / c_altin
                 
             onceki_rejim = mevcut_rejim
             
