@@ -50,43 +50,30 @@ else:
     PLOTBG  = "#FFFFFF"
     PLOTTEM = "plotly_white"
 
-_css_kodlari = """
+st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-.stApp { background: %s; color: %s; }
-.lk-header { padding: 26px 4px 18px 4px; border-bottom: 1px solid %s; margin-bottom: 22px; }
-.lk-eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #6FE3B5; margin-bottom: 6px; }
-.lk-title { font-size: 30px; font-weight: 700; color: %s; margin: 0; letter-spacing: -0.01em; }
-.lk-subtitle { font-size: 14px; color: %s; margin-top: 5px; }
-div[data-testid="stMetric"] { background: %s; border: 1px solid %s; border-radius: 12px; padding: 14px 16px; }
-div[data-testid="stMetric"] label { color: %s !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.04em; }
-div[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; font-size: 20px !important; color: %s !important; }
-.lk-regime { border-radius: 12px; padding: 13px 18px; border: 1px solid; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; line-height: 1.6; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.lk-regime-strong-on  { background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.5);  color: #4ADE80; }
-.lk-regime-weak-on    { background: rgba(234,179,8,0.10);  border-color: rgba(234,179,8,0.4);  color: #F59E0B; }
-.lk-regime-weak-off   { background: rgba(249,115,22,0.10); border-color: rgba(249,115,22,0.4); color: #F97316; }
-.lk-regime-strong-off { background: rgba(239,68,68,0.10);  border-color: rgba(239,68,68,0.4);  color: #EF4444; }
-.lk-section { font-size: 15px; font-weight: 600; color: %s; margin: 28px 0 12px 0; padding-left: 10px; border-left: 3px solid #6FE3B5; }
-.lk-ai-box { background: %s; border: 1px solid %s; border-radius: 12px; padding: 20px 24px; line-height: 1.80; font-size: 15px; color: %s; }
-.stButton > button { background: %s; border: 1px solid %s; color: %s; border-radius: 8px; font-weight: 500; padding: 8px 18px; }
-.stButton > button:hover { border-color: #6FE3B5; color: #6FE3B5; }
-.stTextInput input { background: %s; border: 1px solid %s; color: %s; border-radius: 8px; }
+html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
+.stApp {{ background: {BG}; color: {TEXT}; }}
+.lk-header {{ padding: 26px 4px 18px 4px; border-bottom: 1px solid {BORDER}; margin-bottom: 22px; }}
+.lk-eyebrow {{ font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #6FE3B5; margin-bottom: 6px; }}
+.lk-title {{ font-size: 30px; font-weight: 700; color: {TEXT2}; margin: 0; letter-spacing: -0.01em; }}
+.lk-subtitle {{ font-size: 14px; color: {SUB}; margin-top: 5px; }}
+div[data-testid="stMetric"] {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 12px; padding: 14px 16px; }}
+div[data-testid="stMetric"] label {{ color: {SUB} !important; font-size: 11px !important; text-transform: uppercase; letter-spacing: 0.04em; }}
+div[data-testid="stMetricValue"] {{ font-family: 'JetBrains Mono', monospace; font-size: 20px !important; color: {TEXT2} !important; }}
+.lk-regime {{ border-radius: 12px; padding: 13px 18px; border: 1px solid; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; line-height: 1.6; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }}
+.lk-regime-strong-on  {{ background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.5);  color: #4ADE80; }}
+.lk-regime-weak-on    {{ background: rgba(234,179,8,0.10);  border-color: rgba(234,179,8,0.4);  color: #F59E0B; }}
+.lk-regime-weak-off   {{ background: rgba(249,115,22,0.10); border-color: rgba(249,115,22,0.4); color: #F97316; }}
+.lk-regime-strong-off {{ background: rgba(239,68,68,0.10);  border-color: rgba(239,68,68,0.4);  color: #EF4444; }}
+.lk-section {{ font-size: 15px; font-weight: 600; color: {TEXT2}; margin: 28px 0 12px 0; padding-left: 10px; border-left: 3px solid #6FE3B5; }}
+.lk-ai-box {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 12px; padding: 20px 24px; line-height: 1.80; font-size: 15px; color: {MUTEDTX}; }}
+.stButton > button {{ background: {CARD}; border: 1px solid {BORDER2}; color: {TEXT}; border-radius: 8px; font-weight: 500; padding: 8px 18px; }}
+.stButton > button:hover {{ border-color: #6FE3B5; color: #6FE3B5; }}
+.stTextInput input {{ background: {CARD}; border: 1px solid {BORDER}; color: {TEXT}; border-radius: 8px; }}
 </style>
-""" % (
-    BG, TEXT,           # .stApp
-    BORDER,             # .lk-header border-bottom
-    TEXT2,              # .lk-title color
-    SUB,                # .lk-subtitle color
-    CARD, BORDER,       # stMetric background, border
-    SUB,                # stMetric label color
-    TEXT2,              # stMetricValue color
-    TEXT2,              # .lk-section color
-    CARD, BORDER, MUTEDTX,  # .lk-ai-box
-    CARD, BORDER2, TEXT,    # .stButton > button
-    CARD, BORDER, TEXT,     # .stTextInput input
-)
-st.markdown(_css_kodlari, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # ── BAŞLIK ────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -162,13 +149,7 @@ def telegram_gonder(mesaj):
 # ── VERİ ─────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600)
 def verileri_getir():
-    symbols = {
-        "GC=F":      "Altin",
-        "HG=F":      "Bakir",
-        "BTC-USD":   "Bitcoin",
-        "SI=F":      "Gumus",
-        "DX-Y.NYB":  "DXY",
-    }
+    symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
     df = yf.download(list(symbols.keys()), period="8y", interval="1d",
                      auto_adjust=False, multi_level_index=False, progress=False)
     if df.empty:
@@ -179,7 +160,7 @@ def verileri_getir():
     elif "Close" in df.columns:
         df = df["Close"]
     df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
-    cols = [c for c in ["Altin", "Bakir", "Bitcoin", "Gumus", "DXY"] if c in df.columns]
+    cols = [c for c in ["Altin", "Bakir", "Bitcoin"] if c in df.columns]
     return df[cols].ffill().bfill()
 
 # ── GEMİNİ ───────────────────────────────────────────────────────────────────
@@ -222,7 +203,7 @@ Sadece yorum metni yaz, madde işareti veya başlık ekleme.
 # ── BACKTEST ─────────────────────────────────────────────────────────────────
 def backtest_rotasyon(df):
     d = df.copy()
-    d["Rasyo"] = d["Altin"] / (d["Gumus"] + d["Bakir"])
+    d["Rasyo"] = d["Altin"] / (d["Bakir"] * d["Bitcoin"])
     d["SMA10"] = d["Rasyo"].rolling(10).mean()
     d["SMA50"] = d["Rasyo"].rolling(50).mean()
     d = d.dropna().copy()
@@ -299,13 +280,7 @@ def rejim_kontrol_ve_bildir():
     rejim_tespit() kullandığı için UI ile %100 tutarlı.
     """
     try:
-        symbols = {
-            "GC=F":      "Altin",
-            "HG=F":      "Bakir",
-            "BTC-USD":   "Bitcoin",
-            "SI=F":      "Gumus",
-            "DX-Y.NYB":  "DXY",
-        }
+        symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
         df = yf.download(list(symbols.keys()), period="60d", interval="1d",
                          auto_adjust=False, progress=False)
         if df.empty: return
@@ -316,10 +291,10 @@ def rejim_kontrol_ve_bildir():
             df = df["Close"]
 
         df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
-        df = df[["Altin","Bakir","Bitcoin","Gumus"]].ffill().bfill().dropna()
+        df = df[["Altin","Bakir","Bitcoin"]].ffill().bfill().dropna()
         if len(df) < 52: return
 
-        df["Rasyo"] = df["Altin"] / (df["Gumus"] + df["Bakir"])
+        df["Rasyo"] = df["Altin"] / (df["Bakir"] * df["Bitcoin"])
         df["SMA10"] = df["Rasyo"].rolling(10).mean()
         df["SMA50"] = df["Rasyo"].rolling(50).mean()
         df = df.dropna()
@@ -386,7 +361,7 @@ try:
         st.stop()
 
     # Tüm gerekli sütunların dolu olduğunu kontrol et
-    for col in ["Altin", "Bakir", "Bitcoin", "Gumus"]:
+    for col in ["Altin", "Bakir", "Bitcoin"]:
         if col not in raw.columns:
             st.error(f"'{col}' verisi çekilemedi. Lütfen sayfayı yenileyin.")
             st.stop()
