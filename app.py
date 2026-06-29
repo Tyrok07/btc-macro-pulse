@@ -9,18 +9,18 @@ from datetime import datetime
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
-    SCHEDULEROK = True
+    SCHEDULER_OK = True
 except ImportError:
-    SCHEDULEROK = False
+    SCHEDULER_OK = False
 
-st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_icon="📊")
+st.set_page_config(page_title="Likidite Kompozit Paneli", layout="wide", page_icon="◆")
 
-BASEDIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
-STATEDIR = BASEDIR / "state"
-STATEDIR.mkdir(exist_ok=True)
-ALERTSTATEFILE = STATEDIR / "alertstate.json"
+BASE_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+STATE_DIR = BASE_DIR / "state"
+STATE_DIR.mkdir(exist_ok=True)
+ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
 
-TEMA = "light"  # SADECE BU SATIRI DEĞİŞTİR
+TEMA = "light"
 
 if TEMA == "dark":
     BG = "#0B0E14"
@@ -66,7 +66,6 @@ st.markdown(
     .lk-section {{ font-size: 15px; font-weight: 600; color: {TEXT2}; margin: 28px 0 12px 0; padding-left: 10px; border-left: 3px solid #6FE3B5; }}
     .lk-ai-box {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 12px; padding: 20px 24px; line-height: 1.80; font-size: 15px; color: {MUTEDTX}; }}
     .stButton button {{ background: {CARD}; border: 1px solid {BORDER2}; color: {TEXT}; border-radius: 8px; font-weight: 500; padding: 8px 18px; }}
-    .stButton button:hover {{ border-color: #6FE3B5; color: #6FE3B5; }}
     .stTextInput input {{ background: {CARD}; border: 1px solid {BORDER}; color: {TEXT}; border-radius: 8px; }}
     </style>
     """,
@@ -91,13 +90,13 @@ KONTROLARALIK = 140
 
 def rejimtespit(r, s10, s50):
     if r > s10 and r > s50:
-        return "Gl Boa", 100, 0, "strong-on", "GL BOA", "Her iki sinyal BTC lehine. En güçlü alım bölgesi."
+        return "Gl Boa", 100, 0, 0, "strong-on", "GL BOA", "Her iki sinyal BTC lehine. En güçlü alım bölgesi."
     elif r > s50:
-        return "Boa Dzeltme", 50, 50, "weak-on", "BOA Ksa Dzeltme", "Büyük trend yukarı. Kısa vadede hafif baskı."
+        return "Boa Dzeltme", 50, 50, 0, "weak-on", "BOA Ksa Dzeltme", "Büyük trend yukarı. Kısa vadede hafif baskı."
     elif r > s10:
-        return "Ay Toparlanma", 0, 100, "weak-off", "AYI Ksa Toparlanma", "Büyük trend aşağı. Kısa vadede geçici rahatlama."
+        return "Ay Toparlanma", 0, 100, 0, "weak-off", "AYI Ksa Toparlanma", "Büyük trend aşağı. Kısa vadede geçici rahatlama."
     else:
-        return "Gl Ay", 0, 100, "strong-off", "GL AYI", "Her iki sinyal BTC aleyhine. Altın koruma modu."
+        return "Gl Ay", 0, 100, 0, "strong-off", "GL AYI", "Her iki sinyal BTC aleyhine. Altın koruma modu."
 
 def fmtpct(x): return f"{x:.1f}%"
 def fmtusd(x): return f"${x:,.0f}"
@@ -106,13 +105,13 @@ def fmtint(x): return f"{int(round(x)):,}"
 
 def loadstate():
     try:
-        return json.loads(ALERTSTATEFILE.read_text(encoding="utf-8")) if ALERTSTATEFILE.exists() else {}
+        return json.loads(ALERT_STATE_FILE.read_text(encoding="utf-8")) if ALERT_STATE_FILE.exists() else {}
     except Exception:
         return {}
 
 def savestate(s):
     try:
-        ALERTSTATEFILE.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+        ALERT_STATE_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass
 
@@ -190,9 +189,7 @@ def backtestrotasyon(df):
     btcpctlist = []
     altpctlist = []
     bakirpctlist = []
-    btcgun = 0
-    altgun = 0
-    bakirgun = 0
+    btcgun = altgun = bakirgun = 0
     maxport = 10000.0
     maxdd = 0.0
 
@@ -203,28 +200,15 @@ def backtestrotasyon(df):
 
         portval = cash + btcqty * bp + altqty * ap + bakirqty * kup
 
-        changed = prevregime is None or isim != prevregime
-        if changed:
+        if prevregime is None or isim != prevregime:
             if isim == "Gl Boa":
-                btcqty = portval / bp
-                altqty = 0.0
-                bakirqty = 0.0
-                cash = 0.0
+                btcqty, altqty, bakirqty, cash = portval / bp, 0.0, 0.0, 0.0
             elif isim == "Boa Dzeltme":
-                btcqty = (portval * 0.5) / bp
-                altqty = (portval * 0.5) / ap
-                bakirqty = 0.0
-                cash = 0.0
+                btcqty, altqty, bakirqty, cash = (portval * 0.5) / bp, (portval * 0.5) / ap, 0.0, 0.0
             elif isim == "Ay Toparlanma":
-                btcqty = 0.0
-                altqty = portval / ap
-                bakirqty = 0.0
-                cash = 0.0
+                btcqty, altqty, bakirqty, cash = 0.0, portval / ap, 0.0, 0.0
             else:
-                btcqty = 0.0
-                altqty = 0.0
-                bakirqty = portval / kup
-                cash = 0.0
+                btcqty, altqty, bakirqty, cash = 0.0, 0.0, portval / kup, 0.0
 
         portnow = cash + btcqty * bp + altqty * ap + bakirqty * kup
         btcpct = (btcqty * bp / portnow * 100) if portnow else 0.0
@@ -233,7 +217,7 @@ def backtestrotasyon(df):
 
         traderows.append({
             "Tarih": pd.to_datetime(idx).strftime("%Y-%m-%d"),
-            "Geçiş": f"{prevregime or 'Başlangıç'} -> {isim}" if changed else isim,
+            "Geçiş": f"{prevregime or 'Başlangıç'} -> {isim}" if prevregime != isim else isim,
             "Rejim": etiket,
             "Dahım": f"BTC {tbtc}% | Altın {talt}% | Bakır {tbakir}%",
             "BTC Miktarı": btcqty,
@@ -243,20 +227,16 @@ def backtestrotasyon(df):
             "Altın USD": altqty * ap,
             "Bakır USD": bakirqty * kup,
             "Portföy": round(portnow, 2),
-            "Getiri": round(portnow / 10000.0 - 1, 4) * 100,
+            "Getiri": round((portnow / 10000.0 - 1) * 100, 4),
         })
 
         prevregime = isim
         maxport = max(maxport, portnow)
-        dd = (portnow - maxport) / maxport * 100
-        maxdd = min(maxdd, dd)
+        maxdd = min(maxdd, (portnow - maxport) / maxport * 100)
 
-        if tbtc == 100:
-            btcgun += 1
-        elif talt == 100:
-            altgun += 1
-        else:
-            bakirgun += 1
+        btcgun += int(tbtc == 100)
+        altgun += int(talt == 100)
+        bakirgun += int(tbakir == 100)
 
         equity.append(portnow)
         btcpctlist.append(btcpct)
@@ -310,7 +290,7 @@ Pozisyon: BTC {tbtc}% | Altın {talt}% | Bakır {tbakir}%"""
     except Exception:
         pass
 
-if SCHEDULEROK and "schedulerstarted" not in st.session_state:
+if SCHEDULER_OK and "schedulerstarted" not in st.session_state:
     sch = BackgroundScheduler(timezone="Europe/Istanbul")
     sch.add_job(rejimkontrolvebildir, "interval", minutes=KONTROLARALIK, id="rejimkontrol", replace_existing=True, next_run_time=datetime.now())
     sch.start()
@@ -368,7 +348,7 @@ c4.metric("8Y Rotasyon", fmtusd(rotson), fmtpct(rotkazanc * 100))
 c5.metric("BTC Al-Tut", fmtusd(bhbtcson), fmtpct(bhbtck * 100))
 c6.metric("Altın Al-Tut", fmtusd(bhaltson), fmtpct(bhaltk * 100))
 
-st.markdown('<div style="height:14px"></div>', unsafe_allow_html=True)
+st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
 
 st.markdown(
     f"""
@@ -381,7 +361,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
 st.markdown("### Varlık Dağılımı")
 x1, x2, x3, x4, x5 = st.columns(5)
@@ -391,7 +371,7 @@ x3.metric("Bakır Miktarı", fmtqty(tradelog.iloc[-1]["Bakır Miktarı"]), fmtus
 x4.metric("Toplam Portföy USD", fmtusd(rotson), fmtpct(rotkazanc * 100))
 x5.metric("Tahmini işlem adedi", fmtint(stats["islemsayisi"]), f"{stats['btcgun']} BTC / {stats['altgun']} Altın / {stats['bakirgun']} Bakır")
 
-st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 fark = rotson - bhbtcson
 if fark >= 0:
@@ -407,7 +387,7 @@ s3.metric("Altında Geçen Süre", f"{stats['altgun']} gün", fmtpct(stats["altg
 s4.metric("Bakırda Geçen Süre", f"{stats['bakirgun']} gün", fmtpct(stats["bakirgun"] / stats["toplamgun"] * 100))
 s5.metric("Maks. Drawdown", fmtpct(stats["maxdd"]))
 
-st.markdown('<div class="lk-section">Likidite Rasyosu, SMA10, SMA50, BTC Fiyat</div>', unsafe_allow_html=True)
+st.markdown('<div class="lk-section">Likidite Rasyosu SMA10 SMA50 BTC Fiyat</div>', unsafe_allow_html=True)
 fig1 = go.Figure()
 fig1.add_trace(go.Scatter(x=data.index, y=data["Rasyo"], name="Rasyo", line=dict(color=SUB, width=1.0), opacity=0.7))
 fig1.add_trace(go.Scatter(x=data.index, y=data["SMA10"], name="SMA10", line=dict(color="#4ADE80", width=1.5, dash="dot")))
@@ -481,11 +461,11 @@ st.dataframe(tradelog.style.apply(renksatir, axis=1), use_container_width=True, 
 st.markdown('<div class="lk-section">Otomatik Alarm Sistemi 7/24</div>', unsafe_allow_html=True)
 state = loadstate()
 a1, a2, a3, a4 = st.columns(4)
-a1.metric("Kontrol Sıklığı", f"Her {KONTROLARALIK} dakika", "Aktif" if SCHEDULEROK else "APScheduler eksik")
+a1.metric("Kontrol Sıklığı", f"Her {KONTROLARALIK} dakika", "Aktif" if SCHEDULER_OK else "APScheduler eksik")
 a2.metric("Son Kontrol", state.get("sonkontrol", "Bekleniyor"))
 a3.metric("İzlenen Rejim", state.get("rejim", ""))
 a4.metric("Son Telegram", state.get("sontelegram", "Henüz alarm gönderilmedi"))
-if not SCHEDULEROK:
+if not SCHEDULER_OK:
     st.warning("APScheduler kurulu değil. requirements.txt içine apscheduler>=3.10.4 ekleyin.")
 
 st.markdown('<div class="lk-section">Yapay Zeka Piyasa Yorumu</div>', unsafe_allow_html=True)
@@ -499,7 +479,7 @@ if GEMINIKEY:
 else:
     st.info("Otomatik yorum için GEMINIAPIKEY ekleyin.")
 
-st.markdown('<div style="height:16px"></div>', unsafe_allow_html=True)
+st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 soru = st.text_input("", placeholder="İşlem günü, rejim veya strateji hakkında bir soru sorun...", label_visibility="collapsed")
 if soru and GEMINIKEY:
     with st.spinner("Yanıt hazırlanıyor..."):
@@ -530,7 +510,7 @@ Soru: {soru}""")
 elif soru and not GEMINIKEY:
     st.info("GEMINIAPIKEY olmadan soru yanıtlanamaz.")
 
-st.markdown('<div style="height:16px"></div>', unsafe_allow_html=True)
+st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 if st.button("Güncel Durumu Telegrama Gönder"):
     if not TOKEN:
         st.error("TELEGRAMTOKEN eksik.")
