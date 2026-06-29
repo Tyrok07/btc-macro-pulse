@@ -90,13 +90,13 @@ KONTROLARALIK = 140
 
 def rejimtespit(r, s10, s50):
     if r > s10 and r > s50:
-        return "Gl Boa", 100, 0, 0, "strong-on", "GL BOA", "Her iki sinyal BTC lehine. En güçlü alım bölgesi."
+        return "Gl Boa", 100, 0, 0, "strong-on", "BOA", "Her iki sinyal BTC lehine. En güçlü alım bölgesi."
     elif r > s50:
         return "Boa Dzeltme", 50, 50, 0, "weak-on", "BOA Ksa Dzeltme", "Büyük trend yukarı. Kısa vadede hafif baskı."
     elif r > s10:
         return "Ay Toparlanma", 0, 100, 0, "weak-off", "AYI Ksa Toparlanma", "Büyük trend aşağı. Kısa vadede geçici rahatlama."
     else:
-        return "Gl Ay", 0, 100, 0, "strong-off", "GL AYI", "Her iki sinyal BTC aleyhine. Altın koruma modu."
+        return "Gl Ay", 0, 100, 0, "strong-off", "AYI", "Her iki sinyal BTC aleyhine. Altın koruma modu."
 
 def fmtpct(x): return f"{x:.1f}%"
 def fmtusd(x): return f"${x:,.0f}"
