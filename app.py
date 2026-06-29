@@ -88,7 +88,7 @@ st.markdown("""
 GEMINI_KEY      = str(st.secrets.get("GEMINI_API_KEY",  "")).strip()
 TOKEN           = str(st.secrets.get("TELEGRAM_TOKEN",  "")).strip()
 CHAT_ID         = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
-KONTROL_ARALIK  = 1400  # dakika
+KONTROL_ARALIK  = 140  # dakika
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TEK REJİM FONKSİYONU — hem backtest hem UI hem scheduler burayı kullanır.
