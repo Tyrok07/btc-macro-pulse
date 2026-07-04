@@ -1,8 +1,8 @@
-streamlit>=1.38
-yfinance>=0.2.40
+streamlit
+yfinance
 pandas
+numpy
 plotly
 requests
-apscheduler>=3.10.4
-python-dotenv
-google-genai
+apscheduler
+google-generativeai
