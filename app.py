@@ -92,7 +92,6 @@ KONTROL_ARALIK  = 140  # dakika
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TEK REJİM FONKSİYONU — hem backtest hem UI hem scheduler burayı kullanır.
-# Kural değişirse sadece burası güncellenir, her yer otomatik yansır.
 # ══════════════════════════════════════════════════════════════════════════════
 def rejim_tespit(r, s10, s50):
     """
@@ -163,16 +162,16 @@ def verileri_getir():
     cols = [c for c in ["Altin", "Bakir", "Bitcoin"] if c in df.columns]
     return df[cols].ffill().bfill()
 
-# ── GEMİNİ ───────────────────────────────────────────────────────────────────
+# ── GEMİNİ OPTİMİZASYONU ──────────────────────────────────────────────────────
 def gemini_api(prompt):
     if not GEMINI_KEY:
         return None
-    for model in ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]:
+    for model in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
         try:
             url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
                    f"{model}:generateContent?key={GEMINI_KEY}")
             r = requests.post(url,
-                json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=20)
+                json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=15)
             if r.status_code == 429:
                 continue
             r.raise_for_status()
@@ -220,7 +219,6 @@ def backtest_rotasyon(df):
         r, s10, s50 = row["Rasyo"], row["SMA10"], row["SMA50"]
         bp, ap = float(row["Bitcoin"]), float(row["Altin"])
 
-        # ← Tek rejim fonksiyonu — backtest burayı kullanır
         isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
 
         port_val = cash + btc_qty * bp + alt_qty * ap
@@ -274,11 +272,6 @@ def backtest_rotasyon(df):
 
 # ── 7/24 ARKA PLAN SCHEDULER ─────────────────────────────────────────────────
 def rejim_kontrol_ve_bildir():
-    """
-    APScheduler tarafından her KONTROL_ARALIK dakikada çağrılır.
-    Sayfa kapalı olsa bile çalışır — rejim değişince Telegram alarmı gönderir.
-    rejim_tespit() kullandığı için UI ile %100 tutarlı.
-    """
     try:
         symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
         df = yf.download(list(symbols.keys()), period="60d", interval="1d",
@@ -304,7 +297,6 @@ def rejim_kontrol_ve_bildir():
         btc_fiyat    = float(last["Bitcoin"])
         alt_fiyat    = float(last["Altin"])
 
-        # ← Aynı rejim_tespit() — UI ile birebir aynı karar
         isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
 
         state = load_state()
@@ -338,11 +330,9 @@ def rejim_kontrol_ve_bildir():
             "alt_fiyat":   round(alt_fiyat, 0),
         })
         save_state(state)
-
     except Exception:
-        pass  # Arka plan thread asla çökmemeli
+        pass
 
-# Scheduler — Streamlit her worker'da bir kez başlatılır
 if SCHEDULER_OK and "scheduler_started" not in st.session_state:
     _sch = BackgroundScheduler(timezone="Europe/Istanbul")
     _sch.add_job(rejim_kontrol_ve_bildir, "interval",
@@ -360,7 +350,6 @@ try:
         st.error("Veri yeterli büyüklükte değil.")
         st.stop()
 
-    # Tüm gerekli sütunların dolu olduğunu kontrol et
     for col in ["Altin", "Bakir", "Bitcoin"]:
         if col not in raw.columns:
             st.error(f"'{col}' verisi çekilemedi. Lütfen sayfayı yenileyin.")
@@ -380,11 +369,9 @@ try:
     kisa_bull  = son_rasyo < sma10
     makro_bull = son_rasyo < sma50
 
-    # ← Tek rejim_tespit() çağrısı — UI için
     isim_now, btc_pct_now, alt_pct_now, rejim_kodu, rejim_etiketi, rejim_aciklama = \
         rejim_tespit(son_rasyo, sma10, sma50)
 
-    # Kıyaslamalar
     data["BH_BTC"]   = (10000.0 / float(data["Bitcoin"].iloc[0])) * data["Bitcoin"]
     data["BH_Altin"] = (10000.0 / float(data["Altin"].iloc[0]))   * data["Altin"]
 
@@ -446,7 +433,7 @@ try:
     s3.metric("Altın'da Geçen Süre", f"{stats['alt_gun']} gün",
               fmt_pct(stats['alt_gun'] / stats['toplam_gun'] * 100))
     s4.metric("Maks. Drawdown",      fmt_pct(stats["max_dd"]))
-    s5.metric("Rotasyon Avantajı",   fmt_usd(rot_son - bh_btc_son))
+    s5.metric("Rotasyon Advantage",   fmt_usd(rot_son - bh_btc_son))
 
     # ── 4. LİKİDİTE RASYO GRAFİĞİ ──────────────────────────────────────────
     st.markdown('<div class="lk-section">Likidite Rasyosu · SMA10 · SMA50 · BTC Fiyatı</div>',
@@ -456,14 +443,12 @@ try:
     fig1.add_trace(go.Scatter(x=data.index, y=data["Rasyo"],
         name="Rasyo", line=dict(color=SUB, width=1.0), opacity=0.7))
 
-    # Renk değişen SMA10
     data["Renk10"] = (data["Rasyo"] < data["SMA10"]).map({True:"#4ADE80", False:"#F87171"})
     for _, grp in data.groupby((data["Renk10"] != data["Renk10"].shift()).cumsum()):
         fig1.add_trace(go.Scatter(x=grp.index, y=grp["SMA10"], mode="lines",
             line=dict(color=grp["Renk10"].iloc[0], width=1.5, dash="dot"),
             showlegend=False))
 
-    # Renk değişen SMA50
     data["Renk50"] = (data["Rasyo"] < data["SMA50"]).map({True:"#4ADE80", False:"#F87171"})
     for _, grp in data.groupby((data["Renk50"] != data["Renk50"].shift()).cumsum()):
         fig1.add_trace(go.Scatter(x=grp.index, y=grp["SMA50"], mode="lines",
@@ -474,7 +459,6 @@ try:
         name="BTC Fiyatı", line=dict(color="#F0B90B", width=1.2, dash="dot"),
         yaxis="y2"))
 
-    # Legend proxy'ler
     for lbl, col, dsh in [("SMA50 Boğa","#4ADE80","solid"),("SMA50 Ayı","#F87171","solid"),
                            ("SMA10 Boğa","#4ADE80","dot"),  ("SMA10 Ayı","#F87171","dot")]:
         fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines", name=lbl,
@@ -584,7 +568,6 @@ try:
     st.markdown('<div class="lk-section">Yapay Zeka Piyasa Yorumu</div>',
                 unsafe_allow_html=True)
 
-    # İşlem günlüğü özeti — Gemini'ye bağlam olarak gönderilir
     if not trade_log.empty:
         en_iyi  = trade_log.loc[trade_log["Getiri"].idxmax()]
         en_kotu = trade_log.loc[trade_log["Getiri"].idxmin()]
@@ -608,11 +591,10 @@ try:
         if yorum:
             st.markdown(f'<div class="lk-ai-box">{yorum}</div>', unsafe_allow_html=True)
         else:
-            st.info("Otomatik yorum şu an alınamadı (rate limit). 30 dakika sonra yenilenir.")
+            st.warning("⚠️ Ücretsiz API limitine (Rate Limit) ulaşıldı veya modeller meşgul. Sistem otomatik olarak 30 dakika sonra tekrar deneyecektir.")
     else:
-        st.info("Otomatik yorum için `GEMINI_API_KEY` ekleyin — Ücretsiz: aistudio.google.com")
+        st.info("💡 Otomatik yapay zeka analizi için `GEMINI_API_KEY` ekleyin — Ücretsiz: aistudio.google.com")
 
-    # Soru kutusu — trade_log bağlamı dahil
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     soru = st.text_input("", placeholder="İşlem günlüğü, rejim veya strateji hakkında bir soru sorun...",
                          label_visibility="collapsed")
