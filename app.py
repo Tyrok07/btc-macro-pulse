@@ -52,7 +52,7 @@ else:
 
 st.markdown(f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght=400;500;600;700&family=JetBrains+Mono:wght=400;500;700&display=swap');
 html, body, [class*="css"] {{ font-family: 'Inter', sans-serif; }}
 .stApp {{ background: {BG}; color: {TEXT}; }}
 .lk-header {{ padding: 26px 4px 18px 4px; border-bottom: 1px solid {BORDER}; margin-bottom: 22px; }}
@@ -433,7 +433,7 @@ try:
     s3.metric("Altın'da Geçen Süre", f"{stats['alt_gun']} gün",
               fmt_pct(stats['alt_gun'] / stats['toplam_gun'] * 100))
     s4.metric("Maks. Drawdown",      fmt_pct(stats["max_dd"]))
-    s5.metric("Rotasyon Advantage",   fmt_usd(rot_son - bh_btc_son))
+    s5.metric("Rotasyon Avantajı",   fmt_usd(rot_son - bh_btc_son))
 
     # ── 4. LİKİDİTE RASYO GRAFİĞİ ──────────────────────────────────────────
     st.markdown('<div class="lk-section">Likidite Rasyosu · SMA10 · SMA50 · BTC Fiyatı</div>',
@@ -565,9 +565,22 @@ try:
         st.warning("APScheduler kurulu değil — `requirements.txt`'e `apscheduler>=3.10.4` ekleyin.")
 
     # ── 9. YAPAY ZEKA YORUMU ────────────────────────────────────────────────
-    # ── 9. YAPAY ZEKA YORUMU ────────────────────────────────────────────────
     st.markdown('<div class="lk-section">Yapay Zeka Piyasa Yorumu</div>',
                 unsafe_allow_html=True)
+
+    if not trade_log.empty:
+        en_iyi  = trade_log.loc[trade_log["Getiri"].idxmax()]
+        en_kotu = trade_log.loc[trade_log["Getiri"].idxmin()]
+        trade_ozet = (
+            f"8 yılda toplam {len(trade_log)} rejim geçişi yaşandı.\n"
+            f"En yüksek getiri: {en_iyi['Tarih']} tarihinde {en_iyi['Geçiş']} "
+            f"geçişiyle portföy {fmt_usd(en_iyi['Portföy'])} oldu (%{en_iyi['Getiri']:+.1f}).\n"
+            f"En düşük getiri: {en_kotu['Tarih']} tarihinde {en_kotu['Geçiş']} "
+            f"geçişiyle portföy {fmt_usd(en_kotu['Portföy'])} oldu (%{en_kotu['Getiri']:+.1f}).\n"
+            f"Son işlem: {trade_log.iloc[-1]['Tarih']} — {trade_log.iloc[-1]['Geçiş']}."
+        )
+    else:
+        trade_ozet = "İşlem günlüğü boş."
 
     if GEMINI_KEY:
         with st.spinner("Piyasa verileri yorumlanıyor..."):
@@ -576,11 +589,10 @@ try:
                 rejim_etiketi, rot_kazanc, bh_btc_k, bh_alt_k,
                 kisa_bull, makro_bull)
         
-        # Eğer API'den başarılı bir yorum döndüyse kutuyu göster
-        if yorum and "Rate Limit" not in yorum:
+        # CHX-FIX: Eğer yorum API'den başarılı geldiyse ekrana bas, rate-limit varsa sadece uyarı bas.
+        if yorum:
             st.markdown(f'<div class="lk-ai-box">{yorum}</div>', unsafe_allow_html=True)
         else:
-            # API boş döndüyse veya hata kodu içeriyorsa SADECE bu uyarıyı göster
             st.warning("⚠️ Ücretsiz API limitine (Rate Limit) ulaşıldı veya modeller meşgul. Sistem otomatik olarak 30 dakika sonra tekrar deneyecektir.")
     else:
         st.info("💡 Otomatik yapay zeka analizi için `GEMINI_API_KEY` ekleyin — Ücretsiz: aistudio.google.com")
