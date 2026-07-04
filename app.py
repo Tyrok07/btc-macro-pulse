@@ -565,22 +565,9 @@ try:
         st.warning("APScheduler kurulu değil — `requirements.txt`'e `apscheduler>=3.10.4` ekleyin.")
 
     # ── 9. YAPAY ZEKA YORUMU ────────────────────────────────────────────────
+    # ── 9. YAPAY ZEKA YORUMU ────────────────────────────────────────────────
     st.markdown('<div class="lk-section">Yapay Zeka Piyasa Yorumu</div>',
                 unsafe_allow_html=True)
-
-    if not trade_log.empty:
-        en_iyi  = trade_log.loc[trade_log["Getiri"].idxmax()]
-        en_kotu = trade_log.loc[trade_log["Getiri"].idxmin()]
-        trade_ozet = (
-            f"8 yılda toplam {len(trade_log)} rejim geçişi yaşandı.\n"
-            f"En yüksek getiri: {en_iyi['Tarih']} tarihinde {en_iyi['Geçiş']} "
-            f"geçişiyle portföy {fmt_usd(en_iyi['Portföy'])} oldu (%{en_iyi['Getiri']:+.1f}).\n"
-            f"En düşük getiri: {en_kotu['Tarih']} tarihinde {en_kotu['Geçiş']} "
-            f"geçişiyle portföy {fmt_usd(en_kotu['Portföy'])} oldu (%{en_kotu['Getiri']:+.1f}).\n"
-            f"Son işlem: {trade_log.iloc[-1]['Tarih']} — {trade_log.iloc[-1]['Geçiş']}."
-        )
-    else:
-        trade_ozet = "İşlem günlüğü boş."
 
     if GEMINI_KEY:
         with st.spinner("Piyasa verileri yorumlanıyor..."):
@@ -588,9 +575,12 @@ try:
                 round(btc_fiyat / 500) * 500,
                 rejim_etiketi, rot_kazanc, bh_btc_k, bh_alt_k,
                 kisa_bull, makro_bull)
-        if yorum:
+        
+        # Eğer API'den başarılı bir yorum döndüyse kutuyu göster
+        if yorum and "Rate Limit" not in yorum:
             st.markdown(f'<div class="lk-ai-box">{yorum}</div>', unsafe_allow_html=True)
         else:
+            # API boş döndüyse veya hata kodu içeriyorsa SADECE bu uyarıyı göster
             st.warning("⚠️ Ücretsiz API limitine (Rate Limit) ulaşıldı veya modeller meşgul. Sistem otomatik olarak 30 dakika sonra tekrar deneyecektir.")
     else:
         st.info("💡 Otomatik yapay zeka analizi için `GEMINI_API_KEY` ekleyin — Ücretsiz: aistudio.google.com")
