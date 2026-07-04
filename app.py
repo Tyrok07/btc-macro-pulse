@@ -286,8 +286,15 @@ def process_quantitative_engine(data_frame: pd.DataFrame, initial_equity: float 
     df_calc["XAU_Weight"] = np.select([c_strong_bull, c_weak_bull, c_warning], [0.0, 0.5, 1.0], default=1.0)
     
     # CSS ve Etiket Boyamaları
-    df_calc["CssClass"] = np.select([c_strong_bull, c_weak_bull, c_warning], ["bull-heavy", "bull-light", "bear-warning"], default="bear-panic")
-    df_calc["Tag"] = np.select([c_strong_bull, c_weak_bull, c_warning], ["🟢 GÜÇLÜ BOĞA", "🔵 DEFANSİF BOĞA", "🟠 ERKEN UYARI", "🔴 GÜÇLÜ AYI"], default="🔴 GÜÇLÜ AYI")
+   # HATA VEREN ESKİ SATIR (290. satır):
+# df_calc["Tag"] = np.select([c_strong_bull, c_weak_bull, c_warning], ["🟢 GÜÇLÜ BOĞA", "🔵 DEFANSİF BOĞA", "🟠 ERKEN UYARI", "🔴 GÜÇLÜ AYI"], default="🔴 GÜÇLÜ AYI")
+
+# DOĞRU VE EKSİKSİZ ÇALIŞACAK YENİ SATIR:
+df_calc["Tag"] = np.select(
+    [c_strong_bull, c_weak_bull, c_warning], 
+    ["🟢 GÜÇLÜ BOĞA", "🔵 DEFANSİF BOĞA", "🟠 ERKEN UYARI"], 
+    default="🔴 GÜÇLÜ AYI"
+)
     
     # Günlük Getiri Hesaplamaları
     df_calc["BTC_Return"] = df_calc["Bitcoin"].pct_change().fillna(0)
