@@ -1,13 +1,11 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 import requests
 import json
 from pathlib import Path
 from datetime import datetime
-import time
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -23,7 +21,11 @@ STATE_DIR = BASE_DIR / "state"
 STATE_DIR.mkdir(exist_ok=True)
 ALERT_STATE_FILE = STATE_DIR / "alert_state.json"
 
-TEMA = "light"
+# ── CSS ───────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# TEMA — "dark" veya "light" yazarak tüm renkleri değiştir
+# ══════════════════════════════════════════════════════════════════════════════
+TEMA = "light"   # ← SADECE BU SATIRI DEĞİŞTİR
 
 if TEMA == "dark":
     BG      = "#0B0E14"
@@ -73,6 +75,7 @@ div[data-testid="stMetricValue"] {{ font-family: 'JetBrains Mono', monospace; fo
 </style>
 """, unsafe_allow_html=True)
 
+# ── BAŞLIK ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="lk-header">
     <div class="lk-eyebrow">XAUUSD / XCUUSD / BTCUSD · Likidite Kompoziti · 8 Yıllık Analiz</div>
@@ -87,12 +90,9 @@ TOKEN           = str(st.secrets.get("TELEGRAM_TOKEN",  "")).strip()
 CHAT_ID         = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
 KONTROL_ARALIK  = 140  # dakika
 
-# ── İŞLEM MALİYETLERİ ────────────────────────────────────────────────────────
-KOMISYON = 0.001   # %0.10
-SLIPPAGE = 0.0005  # %0.05
-
 # ══════════════════════════════════════════════════════════════════════════════
-# TEK REJİM FONKSİYONU
+# TEK REJİM FONKSİYONU — hem backtest hem UI hem scheduler burayı kullanır.
+# Kural değişirse sadece burası güncellenir, her yer otomatik yansır.
 # ══════════════════════════════════════════════════════════════════════════════
 def rejim_tespit(r, s10, s50):
     """
@@ -137,21 +137,11 @@ def save_state(s):
 def telegram_gonder(mesaj):
     if not TOKEN or not CHAT_ID:
         return False
-    
-    # Rate limit önleme: Son gönderimden 60 saniye geçti mi?
-    state = load_state()
-    son_gonderim = state.get("son_telegram_zaman", 0)
-    if time.time() - son_gonderim < 60:
-        return False
-    
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
             json={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"},
             timeout=10)
-        if r.ok:
-            state["son_telegram_zaman"] = time.time()
-            save_state(state)
         return r.ok
     except Exception:
         return False
@@ -160,35 +150,16 @@ def telegram_gonder(mesaj):
 @st.cache_data(ttl=3600)
 def verileri_getir():
     symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
-    
-    # MultiIndex sorununu önlemek için multi_level_index=False
-    df = yf.download(
-        list(symbols.keys()), 
-        period="8y", 
-        interval="1d",
-        auto_adjust=False, 
-        multi_level_index=False,
-        progress=False
-    )
-    
+    df = yf.download(list(symbols.keys()), period="8y", interval="1d",
+                     auto_adjust=False, multi_level_index=False, progress=False)
     if df.empty:
         return pd.DataFrame()
-    
-    # MultiIndex yine de gelirse manuel düzelt
     if isinstance(df.columns, pd.MultiIndex):
-        if 'Close' in df.columns.get_level_values(0):
-            df = df.xs('Close', axis=1, level=0)
-        else:
-            df = df.set_axis(df.columns.get_level_values(0), axis=1)
-    
-    # Sadece Close kolonu varsa onu al
-    if isinstance(df.columns, pd.Index) and "Close" in df.columns:
+        df = df["Close"].copy() if "Close" in df.columns.get_level_values(0) \
+             else df.set_axis(df.columns.get_level_values(0), axis=1)
+    elif "Close" in df.columns:
         df = df["Close"]
-    
-    # Kolon isimlerini Türkçeleştir
     df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
-    
-    # Sadece mevcut kolonları al ve eksik değerleri doldur
     cols = [c for c in ["Altin", "Bakir", "Bitcoin"] if c in df.columns]
     return df[cols].ffill().bfill()
 
@@ -231,14 +202,6 @@ Sadece yorum metni yaz, madde işareti veya başlık ekleme.
 
 # ── BACKTEST ─────────────────────────────────────────────────────────────────
 def backtest_rotasyon(df):
-    if df is None or df.empty or len(df) < 60:
-        raise ValueError("Yetersiz veri: En az 60 günlük veri gerekli")
-    
-    # Sıfır veya negatif fiyatları kontrol et
-    for col in ["Altin", "Bakir", "Bitcoin"]:
-        if (df[col] <= 0).any():
-            raise ValueError(f"{col} sütununda sıfır veya negatif değer tespit edildi")
-    
     d = df.copy()
     d["Rasyo"] = d["Altin"] / (d["Bakir"] * d["Bitcoin"])
     d["SMA10"] = d["Rasyo"].rolling(10).mean()
@@ -252,23 +215,18 @@ def backtest_rotasyon(df):
     btc_gun = alt_gun = 0
     max_port = 10000.0
     max_dd = 0.0
-    toplam_maliyet = 0.0
 
     for idx, row in d.iterrows():
         r, s10, s50 = row["Rasyo"], row["SMA10"], row["SMA50"]
         bp, ap = float(row["Bitcoin"]), float(row["Altin"])
 
+        # ← Tek rejim fonksiyonu — backtest burayı kullanır
         isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
 
         port_val = cash + btc_qty * bp + alt_qty * ap
         changed  = (prev_regime is None) or (isim != prev_regime)
 
         if changed:
-            # Komisyon + slippage her işlemde düşülür
-            maliyet    = port_val * (KOMISYON + SLIPPAGE)
-            port_val  -= maliyet
-            toplam_maliyet += maliyet
-
             if isim == "Güçlü Boğa":
                 btc_qty = port_val / bp; alt_qty = cash = 0.0
             elif isim == "Boğa + Düzeltme":
@@ -286,7 +244,6 @@ def backtest_rotasyon(df):
                 "Dağılım": f"BTC %{t_btc} · Altın %{t_alt}",
                 "Portföy": round(port_after, 0),
                 "Getiri":  round((port_after / 10000.0 - 1) * 100, 1),
-                "Maliyet": round(maliyet, 2),
             })
             prev_regime = isim
 
@@ -307,43 +264,35 @@ def backtest_rotasyon(df):
     d["AltinPct"] = alt_pct_list
 
     stats = {
-        "islem_sayisi":   len(trade_rows),
-        "btc_gun":        btc_gun,
-        "alt_gun":        alt_gun,
-        "max_dd":         round(max_dd, 1),
-        "toplam_gun":     len(d),
-        "toplam_maliyet": round(toplam_maliyet, 2),
+        "islem_sayisi": len(trade_rows),
+        "btc_gun":      btc_gun,
+        "alt_gun":      alt_gun,
+        "max_dd":       round(max_dd, 1),
+        "toplam_gun":   len(d),
     }
     return d, pd.DataFrame(trade_rows), stats
 
 # ── 7/24 ARKA PLAN SCHEDULER ─────────────────────────────────────────────────
 def rejim_kontrol_ve_bildir():
+    """
+    APScheduler tarafından her KONTROL_ARALIK dakikada çağrılır.
+    Sayfa kapalı olsa bile çalışır — rejim değişince Telegram alarmı gönderir.
+    rejim_tespit() kullandığı için UI ile %100 tutarlı.
+    """
     try:
         symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
-        df = yf.download(
-            list(symbols.keys()), 
-            period="60d", 
-            interval="1d",
-            auto_adjust=False, 
-            multi_level_index=False,
-            progress=False
-        )
-        if df.empty: 
-            return
+        df = yf.download(list(symbols.keys()), period="60d", interval="1d",
+                         auto_adjust=False, progress=False)
+        if df.empty: return
 
-        # MultiIndex handling
         if isinstance(df.columns, pd.MultiIndex):
-            if 'Close' in df.columns.get_level_values(0):
-                df = df.xs('Close', axis=1, level=0)
-            else:
-                df = df.set_axis(df.columns.get_level_values(0), axis=1)
-        elif isinstance(df.columns, pd.Index) and "Close" in df.columns:
+            df = df["Close"] if "Close" in df.columns.get_level_values(0) else df
+        elif "Close" in df.columns:
             df = df["Close"]
 
         df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
         df = df[["Altin","Bakir","Bitcoin"]].ffill().bfill().dropna()
-        if len(df) < 52: 
-            return
+        if len(df) < 52: return
 
         df["Rasyo"] = df["Altin"] / (df["Bakir"] * df["Bitcoin"])
         df["SMA10"] = df["Rasyo"].rolling(10).mean()
@@ -355,6 +304,7 @@ def rejim_kontrol_ve_bildir():
         btc_fiyat    = float(last["Bitcoin"])
         alt_fiyat    = float(last["Altin"])
 
+        # ← Aynı rejim_tespit() — UI ile birebir aynı karar
         isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
 
         state = load_state()
@@ -370,13 +320,13 @@ def rejim_kontrol_ve_bildir():
                 f"🕐 {datetime.now().strftime('%d.%m.%Y %H:%M')}"
             )
             try:
-                r_req = requests.post(
+                r = requests.post(
                     f"https://api.telegram.org/bot{TOKEN}/sendMessage",
                     json={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"},
                     timeout=10)
                 state["son_telegram"] = (
-                    "✅ Gönderildi" if r_req.ok
-                    else f"❌ {r_req.json().get('description', 'Hata')}"
+                    "✅ Gönderildi" if r.ok
+                    else f"❌ {r.json().get('description', 'Hata')}"
                 )
             except Exception as te:
                 state["son_telegram"] = f"❌ Bağlantı hatası: {te}"
@@ -390,8 +340,9 @@ def rejim_kontrol_ve_bildir():
         save_state(state)
 
     except Exception:
-        pass
+        pass  # Arka plan thread asla çökmemeli
 
+# Scheduler — Streamlit her worker'da bir kez başlatılır
 if SCHEDULER_OK and "scheduler_started" not in st.session_state:
     _sch = BackgroundScheduler(timezone="Europe/Istanbul")
     _sch.add_job(rejim_kontrol_ve_bildir, "interval",
@@ -406,9 +357,10 @@ if SCHEDULER_OK and "scheduler_started" not in st.session_state:
 try:
     raw = verileri_getir()
     if raw.empty or len(raw) < 60:
-        st.error("Veri yeterli büyüklükte değil. Lütfen sayfayı yenileyin.")
+        st.error("Veri yeterli büyüklükte değil.")
         st.stop()
 
+    # Tüm gerekli sütunların dolu olduğunu kontrol et
     for col in ["Altin", "Bakir", "Bitcoin"]:
         if col not in raw.columns:
             st.error(f"'{col}' verisi çekilemedi. Lütfen sayfayı yenileyin.")
@@ -428,9 +380,11 @@ try:
     kisa_bull  = son_rasyo < sma10
     makro_bull = son_rasyo < sma50
 
+    # ← Tek rejim_tespit() çağrısı — UI için
     isim_now, btc_pct_now, alt_pct_now, rejim_kodu, rejim_etiketi, rejim_aciklama = \
         rejim_tespit(son_rasyo, sma10, sma50)
 
+    # Kıyaslamalar
     data["BH_BTC"]   = (10000.0 / float(data["Bitcoin"].iloc[0])) * data["Bitcoin"]
     data["BH_Altin"] = (10000.0 / float(data["Altin"].iloc[0]))   * data["Altin"]
 
@@ -485,7 +439,7 @@ try:
     # ── 3. PERFORMANS İSTATİSTİKLERİ ────────────────────────────────────────
     st.markdown('<div class="lk-section">Strateji Performans İstatistikleri</div>',
                 unsafe_allow_html=True)
-    s1, s2, s3, s4, s5, s6 = st.columns(6)
+    s1, s2, s3, s4, s5 = st.columns(5)
     s1.metric("Toplam İşlem",        str(stats["islem_sayisi"]), "rejim geçişi")
     s2.metric("BTC'de Geçen Süre",   f"{stats['btc_gun']} gün",
               fmt_pct(stats['btc_gun'] / stats['toplam_gun'] * 100))
@@ -493,8 +447,6 @@ try:
               fmt_pct(stats['alt_gun'] / stats['toplam_gun'] * 100))
     s4.metric("Maks. Drawdown",      fmt_pct(stats["max_dd"]))
     s5.metric("Rotasyon Avantajı",   fmt_usd(rot_son - bh_btc_son))
-    s6.metric("Toplam İşlem Maliyeti", fmt_usd(stats["toplam_maliyet"]),
-              f"Kom. %{KOMISYON*100:.1f} + Slip. %{SLIPPAGE*100:.2f}")
 
     # ── 4. LİKİDİTE RASYO GRAFİĞİ ──────────────────────────────────────────
     st.markdown('<div class="lk-section">Likidite Rasyosu · SMA10 · SMA50 · BTC Fiyatı</div>',
@@ -504,12 +456,14 @@ try:
     fig1.add_trace(go.Scatter(x=data.index, y=data["Rasyo"],
         name="Rasyo", line=dict(color=SUB, width=1.0), opacity=0.7))
 
+    # Renk değişen SMA10
     data["Renk10"] = (data["Rasyo"] < data["SMA10"]).map({True:"#4ADE80", False:"#F87171"})
     for _, grp in data.groupby((data["Renk10"] != data["Renk10"].shift()).cumsum()):
         fig1.add_trace(go.Scatter(x=grp.index, y=grp["SMA10"], mode="lines",
             line=dict(color=grp["Renk10"].iloc[0], width=1.5, dash="dot"),
             showlegend=False))
 
+    # Renk değişen SMA50
     data["Renk50"] = (data["Rasyo"] < data["SMA50"]).map({True:"#4ADE80", False:"#F87171"})
     for _, grp in data.groupby((data["Renk50"] != data["Renk50"].shift()).cumsum()):
         fig1.add_trace(go.Scatter(x=grp.index, y=grp["SMA50"], mode="lines",
@@ -520,6 +474,7 @@ try:
         name="BTC Fiyatı", line=dict(color="#F0B90B", width=1.2, dash="dot"),
         yaxis="y2"))
 
+    # Legend proxy'ler
     for lbl, col, dsh in [("SMA50 Boğa","#4ADE80","solid"),("SMA50 Ayı","#F87171","solid"),
                            ("SMA10 Boğa","#4ADE80","dot"),  ("SMA10 Ayı","#F87171","dot")]:
         fig1.add_trace(go.Scatter(x=[None], y=[None], mode="lines", name=lbl,
@@ -629,6 +584,7 @@ try:
     st.markdown('<div class="lk-section">Yapay Zeka Piyasa Yorumu</div>',
                 unsafe_allow_html=True)
 
+    # İşlem günlüğü özeti — Gemini'ye bağlam olarak gönderilir
     if not trade_log.empty:
         en_iyi  = trade_log.loc[trade_log["Getiri"].idxmax()]
         en_kotu = trade_log.loc[trade_log["Getiri"].idxmin()]
@@ -656,6 +612,7 @@ try:
     else:
         st.info("Otomatik yorum için `GEMINI_API_KEY` ekleyin — Ücretsiz: aistudio.google.com")
 
+    # Soru kutusu — trade_log bağlamı dahil
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     soru = st.text_input("", placeholder="İşlem günlüğü, rejim veya strateji hakkında bir soru sorun...",
                          label_visibility="collapsed")
@@ -668,7 +625,7 @@ Sıradan bir yatırımcıya sade Türkçe, kısa ve net yanıt ver. Teknik jargo
 MEVCUT DURUM:
 - BTC: {fmt_usd(btc_fiyat)} | Altın: {fmt_usd(alt_fiyat)}
 - Rejim: {rejim_etiketi}
-- Kısa vade (SMA10): {"Boğa" if kisa_bull else "Ayı"} | Uzun vade (SMA50): {"Boğa" if makro_bull else "Ayı"}
+- Kısa vade: {"Boğa" if kisa_bull else "Ayı"} | Uzun vade: {"Boğa" if makro_bull else "Ayı"}
 - Şu an pozisyon: BTC %{btc_pct_now} · Altın %{alt_pct_now}
 
 PORTFÖY PERFORMANSI:
@@ -677,7 +634,6 @@ PORTFÖY PERFORMANSI:
 - Altın al-tut: {fmt_pct(bh_alt_k)} ({fmt_usd(bh_alt_son)})
 - Maks. Drawdown: {fmt_pct(stats['max_dd'])}
 - BTC'de geçen süre: {stats['btc_gun']} gün | Altın'da: {stats['alt_gun']} gün
-- Toplam işlem maliyeti: {fmt_usd(stats['toplam_maliyet'])}
 
 İŞLEM GEÇMİŞİ ÖZETİ:
 {trade_ozet}
@@ -702,8 +658,8 @@ Soru: {soru}
                 f"🪙 BTC: {fmt_usd(btc_fiyat)} ({fmt_pct(btc_degisim)} gün)\n"
                 f"🥇 Altın: {fmt_usd(alt_fiyat)} ({fmt_pct(alt_degisim)} gün)\n\n"
                 f"📊 Rejim: *{rejim_etiketi}*\n"
-                f"  • Kısa Vade (SMA10): {'🟢 Boğa' if kisa_bull else '🔴 Ayı'}\n"
-                f"  • Uzun Vade (SMA50): {'🟢 Boğa' if makro_bull else '🔴 Ayı'}\n\n"
+                f"  • Kısa Vade: {'🟢 Boğa' if kisa_bull else '🔴 Ayı'}\n"
+                f"  • Uzun Vade: {'🟢 Boğa' if makro_bull else '🔴 Ayı'}\n\n"
                 f"💼 Pozisyon: BTC %{btc_pct_now} · Altın %{alt_pct_now}\n\n"
                 f"📈 8Y Rotasyon:   {fmt_usd(rot_son)} ({fmt_pct(rot_kazanc)})\n"
                 f"₿  BTC Al-Tut:   {fmt_usd(bh_btc_son)} ({fmt_pct(bh_btc_k)})\n"
