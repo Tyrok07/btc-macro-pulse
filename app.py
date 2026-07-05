@@ -167,7 +167,8 @@ def verileri_getir():
 def gemini_api(prompt):
     if not GEMINI_KEY:
         return None
-    for model in ["gemini-2.0-flash-lite", "gemini-1.5-flash-8b", "gemini-2.0-flash"]:
+    # API'de karşılığı olan güncel ve kararlı çalışan modeller listelendi
+    for model in ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]:
         try:
             url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
                    f"{model}:generateContent?key={GEMINI_KEY}")
