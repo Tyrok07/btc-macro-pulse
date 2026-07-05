@@ -175,7 +175,7 @@ def query_gemini_brain(prompt_payload: str) -> str:
     if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY" or not GEMINI_API_KEY:
         return "Gemini API modülü devre dışı: Geçerli bir anahtar bulunamadı."
     
-    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     headers = {"Content-Type": "application/json"}
     structured_body = {
         "contents": [{
