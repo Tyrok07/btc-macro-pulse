@@ -1,58 +1,59 @@
-import yfinance as yf
 import pandas as pd
+import streamlit as st
+import yfinance as yf
 
 
 class DataLoader:
 
-    def __init__(self):
+    SYMBOLS = {
+        "GC=F": "Altin",
+        "HG=F": "Bakir",
+        "BTC-USD": "Bitcoin"
+    }
 
-        self.cache = {}
-
-    ########################################################
-
-    def download(
-        self,
-        ticker,
-        start,
-        end,
-        interval="1d"
-    ):
+    @staticmethod
+    @st.cache_data(ttl=3600)
+    def load():
 
         df = yf.download(
-            ticker,
-            start=start,
-            end=end,
-            interval=interval,
-            auto_adjust=True,
+            list(DataLoader.SYMBOLS.keys()),
+            period="8y",
+            interval="1d",
+            auto_adjust=False,
+            multi_level_index=False,
             progress=False
         )
 
         if df.empty:
-            raise ValueError(f"{ticker} data not found.")
+            return pd.DataFrame()
 
-        return df
+        if isinstance(df.columns, pd.MultiIndex):
 
-    ########################################################
+            if "Close" in df.columns.get_level_values(0):
+                df = df["Close"].copy()
+            else:
+                df = df.set_axis(
+                    df.columns.get_level_values(0),
+                    axis=1
+                )
 
-    def close(
-        self,
-        ticker,
-        start,
-        end,
-        interval="1d"
-    ):
+        elif "Close" in df.columns:
 
-        df = self.download(
-            ticker,
-            start,
-            end,
-            interval
-        )
+            df = df["Close"]
 
-        return df["Close"].rename(ticker)
+        df = df.rename(columns={
+            k: v
+            for k, v in DataLoader.SYMBOLS.items()
+            if k in df.columns
+        })
 
-    ########################################################
+        cols = [
+            c for c in [
+                "Altin",
+                "Bakir",
+                "Bitcoin"
+            ]
+            if c in df.columns
+        ]
 
-    def merge(self, series):
-
-        return pd.concat(series, axis=1).dropna()
+        return df[cols].ffill().bfill()
