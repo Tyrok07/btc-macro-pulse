@@ -4,8 +4,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import json
+
 from pathlib import Path
 from datetime import datetime
+
+from data.loader import DataLoader
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -146,22 +149,6 @@ def telegram_gonder(mesaj):
     except Exception:
         return False
 
-# ── VERİ ─────────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=3600)
-def verileri_getir():
-    symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
-    df = yf.download(list(symbols.keys()), period="8y", interval="1d",
-                     auto_adjust=False, multi_level_index=False, progress=False)
-    if df.empty:
-        return pd.DataFrame()
-    if isinstance(df.columns, pd.MultiIndex):
-        df = df["Close"].copy() if "Close" in df.columns.get_level_values(0) \
-             else df.set_axis(df.columns.get_level_values(0), axis=1)
-    elif "Close" in df.columns:
-        df = df["Close"]
-    df = df.rename(columns={k: v for k, v in symbols.items() if k in df.columns})
-    cols = [c for c in ["Altin", "Bakir", "Bitcoin"] if c in df.columns]
-    return df[cols].ffill().bfill()
 
 # ── GEMİNİ ───────────────────────────────────────────────────────────────────
 def gemini_api(prompt):
@@ -202,20 +189,19 @@ Sadece yorum metni yaz, madde işareti veya başlık ekleme.
     return gemini_api(prompt)
 
 # ── BACKTEST ─────────────────────────────────────────────────────────────────
-def backtest_rotasyon(df, baslangic=10000, komisyon=0.001, slippage=0.0005):
+def backtest_rotasyon(df):
     d = df.copy()
     d["Rasyo"] = d["Altin"] / (d["Bakir"] * d["Bitcoin"])
     d["SMA10"] = d["Rasyo"].rolling(10).mean()
     d["SMA50"] = d["Rasyo"].rolling(50).mean()
     d = d.dropna().copy()
 
-    toplam_maliyet = komisyon + slippage
-    cash = float(baslangic)
+    cash = 10000.0
     btc_qty = alt_qty = 0.0
     prev_regime = None
     trade_rows, equity, btc_pct_list, alt_pct_list = [], [], [], []
     btc_gun = alt_gun = 0
-    max_port = float(baslangic)
+    max_port = 10000.0
     max_dd = 0.0
 
     for idx, row in d.iterrows():
@@ -226,8 +212,6 @@ def backtest_rotasyon(df, baslangic=10000, komisyon=0.001, slippage=0.0005):
         isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
 
         port_val = cash + btc_qty * bp + alt_qty * ap
-        if prev_regime is not None:
-            port_val *= (1-toplam_maliyet)
         changed  = (prev_regime is None) or (isim != prev_regime)
 
         if changed:
@@ -247,7 +231,7 @@ def backtest_rotasyon(df, baslangic=10000, komisyon=0.001, slippage=0.0005):
                 "Rejim":   etiket,
                 "Dağılım": f"BTC %{t_btc} · Altın %{t_alt}",
                 "Portföy": round(port_after, 0),
-                "Getiri":  round((port_after  / baslangic - 1) * 100, 1),
+                "Getiri":  round((port_after / 10000.0 - 1) * 100, 1),
             })
             prev_regime = isim
 
@@ -359,11 +343,7 @@ if SCHEDULER_OK and "scheduler_started" not in st.session_state:
 # ANA UYGULAMA
 # ══════════════════════════════════════════════════════════════════════════════
 try:
-    st.sidebar.header('Backtest Ayarları')
-    baslangic=st.sidebar.number_input('Başlangıç Sermayesi ($)',value=10000,step=1000)
-    komisyon=st.sidebar.number_input('Komisyon (%)',value=0.10,step=0.01)/100
-    slippage=st.sidebar.number_input('Slippage (%)',value=0.05,step=0.01)/100
-    raw = verileri_getir()
+    raw = DataLoader.load()
     if raw.empty or len(raw) < 60:
         st.error("Veri yeterli büyüklükte değil.")
         st.stop()
@@ -377,7 +357,7 @@ try:
             st.error(f"'{col}' verisi tamamen boş. Lütfen sayfayı yenileyin.")
             st.stop()
 
-    data, trade_log, stats = backtest_rotasyon(raw, baslangic=baslangic, komisyon=komisyon, slippage=slippage)
+    data, trade_log, stats = backtest_rotasyon(raw)
 
     last       = data.iloc[-1]
     btc_fiyat  = float(last["Bitcoin"])
@@ -393,15 +373,15 @@ try:
         rejim_tespit(son_rasyo, sma10, sma50)
 
     # Kıyaslamalar
-    data["BH_BTC"]   = (float(baslangic) / float(data["Bitcoin"].iloc[0])) * data["Bitcoin"]
-    data["BH_Altin"] = (float(baslangic) / float(data["Altin"].iloc[0]))   * data["Altin"]
+    data["BH_BTC"]   = (10000.0 / float(data["Bitcoin"].iloc[0])) * data["Bitcoin"]
+    data["BH_Altin"] = (10000.0 / float(data["Altin"].iloc[0]))   * data["Altin"]
 
     rot_son    = float(data["Portfoy"].iloc[-1])
-    rot_kazanc = (rot_son     / baslangic - 1) * 100
+    rot_kazanc = (rot_son    / 10000.0 - 1) * 100
     bh_btc_son = float(data["BH_BTC"].iloc[-1])
-    bh_btc_k   = (bh_btc_son  / baslangic - 1) * 100
+    bh_btc_k   = (bh_btc_son / 10000.0 - 1) * 100
     bh_alt_son = float(data["BH_Altin"].iloc[-1])
-    bh_alt_k   = (bh_alt_son  / baslangic - 1) * 100
+    bh_alt_k   = (bh_alt_son / 10000.0 - 1) * 100
 
     btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100 \
                   if len(data) >= 2 else 0.0
