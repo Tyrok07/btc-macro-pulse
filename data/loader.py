@@ -1,10 +1,4 @@
-diff --git a/data/loader.py b/data/loader.py
-index 8c2815902a1ccee383207b1a79ffd69412943d23..d4e84238df1ab9efe51cb21542faa916ffde54e4 100644
---- a/data/loader.py
-+++ b/data/loader.py
-@@ -1,59 +1,50 @@
 +from __future__ import annotations
-+
  import pandas as pd
  import streamlit as st
  import yfinance as yf
