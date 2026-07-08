@@ -9,6 +9,8 @@ from pathlib import Path
 from datetime import datetime
 
 from data.loader import DataLoader
+from engine.backtest import BacktestEngine
+from engine.regimes import RegimeDetector
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -93,32 +95,6 @@ TOKEN           = str(st.secrets.get("TELEGRAM_TOKEN",  "")).strip()
 CHAT_ID         = str(st.secrets.get("TELEGRAM_CHAT_ID","")).strip()
 KONTROL_ARALIK  = 140  # dakika
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TEK REJİM FONKSİYONU — hem backtest hem UI hem scheduler burayı kullanır.
-# Kural değişirse sadece burası güncellenir, her yer otomatik yansır.
-# ══════════════════════════════════════════════════════════════════════════════
-def rejim_tespit(r, s10, s50):
-    """
-    Girdi : rasyo, SMA10, SMA50
-    Çıktı : (isim, btc_pct, alt_pct, css_kodu, emoji_etiket, açıklama)
-    """
-    if r < s10 and r < s50:
-        return ("Güçlü Boğa",        100, 0,
-                "strong-on",  "🟢🟢 GÜÇLÜ BOĞA",
-                "Her iki sinyal BTC lehine · En güçlü alım bölgesi")
-    elif r < s50:
-        return ("Boğa + Düzeltme",   50, 50,
-                "weak-on",    "🟡🟢 BOĞA + Kısa Düzeltme",
-                "Büyük trend yukarı · Kısa vadede hafif baskı")
-    elif r < s10:
-        return ("Ayı + Toparlanma",  0, 100,
-                "weak-off",   "🟠🔴 AYI + Kısa Toparlanma",
-                "Büyük trend aşağı · Kısa vadede geçici rahatlama")
-    else:
-        return ("Güçlü Ayı",         0, 100,
-                "strong-off", "🔴🔴 GÜÇLÜ AYI",
-                "Her iki sinyal BTC aleyhine · Altın koruma modu")
-
 # ── YARDIMCI FONKSİYONLAR ────────────────────────────────────────────────────
 def fmt_pct(x): return f"%{x:+.1f}"
 def fmt_usd(x): return f"${x:,.0f}"
@@ -188,84 +164,12 @@ Sadece yorum metni yaz, madde işareti veya başlık ekleme.
 """
     return gemini_api(prompt)
 
-# ── BACKTEST ─────────────────────────────────────────────────────────────────
-def backtest_rotasyon(df):
-    d = df.copy()
-    d["Rasyo"] = d["Altin"] / (d["Bakir"] * d["Bitcoin"])
-    d["SMA10"] = d["Rasyo"].rolling(10).mean()
-    d["SMA50"] = d["Rasyo"].rolling(50).mean()
-    d = d.dropna().copy()
-
-    cash = 10000.0
-    btc_qty = alt_qty = 0.0
-    prev_regime = None
-    trade_rows, equity, btc_pct_list, alt_pct_list = [], [], [], []
-    btc_gun = alt_gun = 0
-    max_port = 10000.0
-    max_dd = 0.0
-
-    for idx, row in d.iterrows():
-        r, s10, s50 = row["Rasyo"], row["SMA10"], row["SMA50"]
-        bp, ap = float(row["Bitcoin"]), float(row["Altin"])
-
-        # ← Tek rejim fonksiyonu — backtest burayı kullanır
-        isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
-
-        port_val = cash + btc_qty * bp + alt_qty * ap
-        changed  = (prev_regime is None) or (isim != prev_regime)
-
-        if changed:
-            if isim == "Güçlü Boğa":
-                btc_qty = port_val / bp; alt_qty = cash = 0.0
-            elif isim == "Boğa + Düzeltme":
-                btc_qty = (port_val * 0.5) / bp
-                alt_qty = (port_val * 0.5) / ap
-                cash = 0.0
-            else:
-                alt_qty = port_val / ap; btc_qty = cash = 0.0
-
-            port_after = cash + btc_qty * bp + alt_qty * ap
-            trade_rows.append({
-                "Tarih":   pd.to_datetime(idx).strftime("%Y-%m-%d"),
-                "Geçiş":   f"{prev_regime or 'Başlangıç'} → {isim}",
-                "Rejim":   etiket,
-                "Dağılım": f"BTC %{t_btc} · Altın %{t_alt}",
-                "Portföy": round(port_after, 0),
-                "Getiri":  round((port_after / 10000.0 - 1) * 100, 1),
-            })
-            prev_regime = isim
-
-        port_now  = cash + btc_qty * bp + alt_qty * ap
-        max_port  = max(max_port, port_now)
-        dd        = (port_now - max_port) / max_port * 100
-        max_dd    = min(max_dd, dd)
-
-        if t_btc == 100: btc_gun += 1
-        if t_alt == 100: alt_gun += 1
-
-        equity.append(port_now)
-        btc_pct_list.append(t_btc)
-        alt_pct_list.append(t_alt)
-
-    d["Portfoy"]  = equity
-    d["BtcPct"]   = btc_pct_list
-    d["AltinPct"] = alt_pct_list
-
-    stats = {
-        "islem_sayisi": len(trade_rows),
-        "btc_gun":      btc_gun,
-        "alt_gun":      alt_gun,
-        "max_dd":       round(max_dd, 1),
-        "toplam_gun":   len(d),
-    }
-    return d, pd.DataFrame(trade_rows), stats
-
 # ── 7/24 ARKA PLAN SCHEDULER ─────────────────────────────────────────────────
 def rejim_kontrol_ve_bildir():
     """
     APScheduler tarafından her KONTROL_ARALIK dakikada çağrılır.
     Sayfa kapalı olsa bile çalışır — rejim değişince Telegram alarmı gönderir.
-    rejim_tespit() kullandığı için UI ile %100 tutarlı.
+    RegimeDetector kullandığı için UI ile %100 tutarlı.
     """
     try:
         symbols = {"GC=F": "Altin", "HG=F": "Bakir", "BTC-USD": "Bitcoin"}
@@ -282,18 +186,14 @@ def rejim_kontrol_ve_bildir():
         df = df[["Altin","Bakir","Bitcoin"]].ffill().bfill().dropna()
         if len(df) < 52: return
 
-        df["Rasyo"] = df["Altin"] / (df["Bakir"] * df["Bitcoin"])
-        df["SMA10"] = df["Rasyo"].rolling(10).mean()
-        df["SMA50"] = df["Rasyo"].rolling(50).mean()
-        df = df.dropna()
+        df = RegimeDetector().detect(df)
 
         last = df.iloc[-1]
-        r, s10, s50  = float(last["Rasyo"]), float(last["SMA10"]), float(last["SMA50"])
-        btc_fiyat    = float(last["Bitcoin"])
-        alt_fiyat    = float(last["Altin"])
-
-        # ← Aynı rejim_tespit() — UI ile birebir aynı karar
-        isim, t_btc, t_alt, _, etiket, _ = rejim_tespit(r, s10, s50)
+        btc_fiyat = float(last["Bitcoin"])
+        alt_fiyat = float(last["Altin"])
+        t_btc = int(last["BtcPct"])
+        t_alt = int(last["AltinPct"])
+        etiket = last["RegimeLabel"]
 
         state = load_state()
         prev  = state.get("rejim", "")
@@ -357,36 +257,30 @@ try:
             st.error(f"'{col}' verisi tamamen boş. Lütfen sayfayı yenileyin.")
             st.stop()
 
-    data, trade_log, stats = backtest_rotasyon(raw)
+    result = BacktestEngine().run(raw)
+    data = result.data
+    trade_log = result.trade_log
+    stats = result.stats
 
     last       = data.iloc[-1]
     btc_fiyat  = float(last["Bitcoin"])
     alt_fiyat  = float(last["Altin"])
-    son_rasyo  = float(last["Rasyo"])
-    sma10      = float(last["SMA10"])
-    sma50      = float(last["SMA50"])
-    kisa_bull  = son_rasyo < sma10
-    makro_bull = son_rasyo < sma50
+    kisa_bull = bool(last["ShortBull"])
+    makro_bull = bool(last["MacroBull"])
+    btc_pct_now = int(last["BtcPct"])
+    alt_pct_now = int(last["AltinPct"])
+    rejim_kodu = last["RegimeCode"]
+    rejim_etiketi = last["RegimeLabel"]
+    rejim_aciklama = last["RegimeDescription"]
 
-    # ← Tek rejim_tespit() çağrısı — UI için
-    isim_now, btc_pct_now, alt_pct_now, rejim_kodu, rejim_etiketi, rejim_aciklama = \
-        rejim_tespit(son_rasyo, sma10, sma50)
-
-    # Kıyaslamalar
-    data["BH_BTC"]   = (10000.0 / float(data["Bitcoin"].iloc[0])) * data["Bitcoin"]
-    data["BH_Altin"] = (10000.0 / float(data["Altin"].iloc[0]))   * data["Altin"]
-
-    rot_son    = float(data["Portfoy"].iloc[-1])
-    rot_kazanc = (rot_son    / 10000.0 - 1) * 100
-    bh_btc_son = float(data["BH_BTC"].iloc[-1])
-    bh_btc_k   = (bh_btc_son / 10000.0 - 1) * 100
-    bh_alt_son = float(data["BH_Altin"].iloc[-1])
-    bh_alt_k   = (bh_alt_son / 10000.0 - 1) * 100
-
-    btc_degisim = (btc_fiyat / float(data["Bitcoin"].iloc[-2]) - 1) * 100 \
-                  if len(data) >= 2 else 0.0
-    alt_degisim = (alt_fiyat / float(data["Altin"].iloc[-2])   - 1) * 100 \
-                  if len(data) >= 2 else 0.0
+    rot_son = stats["rot_son"]
+    rot_kazanc = stats["rot_kazanc"]
+    bh_btc_son = stats["bh_btc_son"]
+    bh_btc_k = stats["bh_btc_k"]
+    bh_alt_son = stats["bh_alt_son"]
+    bh_alt_k = stats["bh_alt_k"]
+    btc_degisim = stats["btc_degisim"]
+    alt_degisim = stats["alt_degisim"]
 
     # ── 1. METRİK KARTLARI ──────────────────────────────────────────────────
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -445,14 +339,12 @@ try:
         name="Rasyo", line=dict(color=SUB, width=1.0), opacity=0.7))
 
     # Renk değişen SMA10
-    data["Renk10"] = (data["Rasyo"] < data["SMA10"]).map({True:"#4ADE80", False:"#F87171"})
     for _, grp in data.groupby((data["Renk10"] != data["Renk10"].shift()).cumsum()):
         fig1.add_trace(go.Scatter(x=grp.index, y=grp["SMA10"], mode="lines",
             line=dict(color=grp["Renk10"].iloc[0], width=1.5, dash="dot"),
             showlegend=False))
 
     # Renk değişen SMA50
-    data["Renk50"] = (data["Rasyo"] < data["SMA50"]).map({True:"#4ADE80", False:"#F87171"})
     for _, grp in data.groupby((data["Renk50"] != data["Renk50"].shift()).cumsum()):
         fig1.add_trace(go.Scatter(x=grp.index, y=grp["SMA50"], mode="lines",
             line=dict(color=grp["Renk50"].iloc[0], width=2.5),
