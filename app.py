@@ -1,8 +1,4 @@
-diff --git a/app.py b/app.py
-index 9ca31255fd0a3c054599b6d9513d2ac536e5652e..139ab9915606713c2a70e6a75d406c9c200f563c 100644
---- a/app.py
-+++ b/app.py
-@@ -1,686 +1,95 @@
+
 -import streamlit as st
 -import yfinance as yf
 -import pandas as pd
