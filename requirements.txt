@@ -6,3 +6,5 @@ plotly
 requests
 apscheduler
 google-generativeai
+protobuf>=4.25.8 # not directly required, pinned by Snyk to avoid a vulnerability
+pyarrow>=14.0.1 # not directly required, pinned by Snyk to avoid a vulnerability
