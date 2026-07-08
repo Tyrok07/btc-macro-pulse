@@ -84,5 +84,8 @@ class MetricsEngine:
             "bh_alt_k": (bh_alt_son / self.initial_cash - 1) * 100,
             "btc_degisim": float(data["Bitcoin"].pct_change().iloc[-1] * 100) if len(data) >= 2 else 0.0,
             "alt_degisim": float(data["Altin"].pct_change().iloc[-1] * 100) if len(data) >= 2 else 0.0,
+            "rotation_advantage": rot_son - bh_btc_son,
+            "btc_gun_pct": (btc_days / len(data) * 100) if len(data) else 0.0,
+            "alt_gun_pct": (gold_days / len(data) * 100) if len(data) else 0.0,
         }
         return stats
