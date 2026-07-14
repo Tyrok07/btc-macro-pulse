@@ -1,6 +1,6 @@
 """İşlem günlüğü tablosu (renkli satırlarla)."""
 import streamlit as st
-from ui.styles import render_section_title
+from ui.styles import render_section
 
 
 def _renk_kodu(gecis: str) -> str:
@@ -20,7 +20,7 @@ GIZLI_SUTUNLAR = ["Geçiş", "Getiri"]
 
 
 def render_trade_log(trade_log):
-    render_section_title("8 Yıllık İşlem Günlüğü")
+    render_section("8 Yıllık İşlem Günlüğü")
 
     gorunen_kolonlar = [c for c in trade_log.columns if c not in GIZLI_SUTUNLAR]
     gorunen_df = trade_log[gorunen_kolonlar]
