@@ -31,3 +31,21 @@ def render_trade_log(trade_log):
 
     st.dataframe(gorunen_df.style.apply(satir_stili, axis=1),
                  use_container_width=True, hide_index=True)
+
+
+def trade_summary_text(trade_log, fmt_usd) -> str:
+    """AI paneline (assistant_panel.py) bağlam olarak gönderilen özet metin.
+    Not: Geçiş/Getiri sütunları tabloda gizli olsa da trade_log verisinde
+    hâlâ mevcut olduğu için burada sorunsuz kullanılabilir."""
+    if trade_log.empty:
+        return "İşlem günlüğü boş."
+    best = trade_log.loc[trade_log["Getiri"].idxmax()]
+    worst = trade_log.loc[trade_log["Getiri"].idxmin()]
+    return (
+        f"8 yılda toplam {len(trade_log)} rejim geçişi yaşandı.\n"
+        f"En yüksek getiri: {best['Tarih']} tarihinde {best['Geçiş']} "
+        f"geçişiyle portföy {fmt_usd(best['Portföy'])} oldu (%{best['Getiri']:+.1f}).\n"
+        f"En düşük getiri: {worst['Tarih']} tarihinde {worst['Geçiş']} "
+        f"geçişiyle portföy {fmt_usd(worst['Portföy'])} oldu (%{worst['Getiri']:+.1f}).\n"
+        f"Son işlem: {trade_log.iloc[-1]['Tarih']} — {trade_log.iloc[-1]['Geçiş']}."
+    )
